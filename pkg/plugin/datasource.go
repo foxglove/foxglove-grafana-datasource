@@ -24,7 +24,7 @@ var (
 )
 
 // NewDatasource creates a new datasource instance.
-func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+func NewDatasource(_ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	return &Datasource{}, nil
 }
 
