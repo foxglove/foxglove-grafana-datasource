@@ -2,7 +2,7 @@ apiVersion: 1
 
 datasources:
   - name: 'foxglove'
-    type: 'foxglovedev-foxglove-datasource'
+    type: 'foxglove-grafana-datasource'
     access: proxy
     isDefault: false
     orgId: 1
