@@ -190,13 +190,69 @@ func (d *Datasource) fetchFoxgloveStream(ctx context.Context, config *models.Plu
 		return nil, fmt.Errorf("API returned status %d for URL %s: %s (request: %s)", resp.StatusCode, url, string(body), string(jsonPayload))
 	}
 
-	// Read response body
+	// Read response body - this should contain a URL to the actual data file
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	return body, nil
+	// Parse the response to extract the download URL
+	var downloadResponse map[string]interface{}
+	if err := json.Unmarshal(body, &downloadResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse download response: %w", err)
+	}
+
+	// Extract the URL from the response (could be "url", "downloadUrl", "link", etc.)
+	downloadURL, ok := downloadResponse["url"].(string)
+	if !ok {
+		// Try alternative field names
+		if url, ok := downloadResponse["downloadUrl"].(string); ok {
+			downloadURL = url
+		} else if url, ok := downloadResponse["link"].(string); ok {
+			downloadURL = url
+		} else {
+			// If no URL field found, return the raw response for debugging
+			return nil, fmt.Errorf("no download URL found in response: %s", string(body))
+		}
+	}
+
+	if downloadURL == "" {
+		return nil, fmt.Errorf("empty download URL in response: %s", string(body))
+	}
+
+	// Make GET request to download the actual data file
+	return d.downloadFile(ctx, downloadURL)
+}
+
+// downloadFile makes a GET request to download the file from the provided URL
+func (d *Datasource) downloadFile(ctx context.Context, fileURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", fileURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create download request: %w", err)
+	}
+
+	// Make request (no auth needed for pre-signed URLs typically)
+	client := &http.Client{
+		Timeout: 60 * time.Second, // Longer timeout for file downloads
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("download returned status %d for URL %s: %s", resp.StatusCode, fileURL, string(body))
+	}
+
+	// Read the file content
+	fileData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file content: %w", err)
+	}
+
+	return fileData, nil
 }
 
 // convertToDataFrames converts Foxglove API response to Grafana data frames
