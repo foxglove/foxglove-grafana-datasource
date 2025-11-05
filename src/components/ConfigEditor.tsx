@@ -45,12 +45,12 @@ export function ConfigEditor(props: Props) {
 
   return (
     <>
-      <InlineField label="Path" labelWidth={14} interactive tooltip={'Json field returned to frontend'}>
+      <InlineField label="API Base URL" labelWidth={14} interactive tooltip={'Optional: Override the default Foxglove API base URL'}>
         <Input
           id="config-editor-path"
           onChange={onPathChange}
           value={jsonData.path}
-          placeholder="Enter the path, e.g. /api/v1"
+          placeholder="https://api.foxglove.dev/v1"
           width={40}
         />
       </InlineField>

@@ -1,9 +1,13 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -24,13 +28,31 @@ var (
 )
 
 // NewDatasource creates a new datasource instance.
-func NewDatasource(_ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
-	return &Datasource{}, nil
+func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+	config, err := models.LoadPluginSettings(settings)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load plugin settings: %w", err)
+	}
+
+	return &Datasource{
+		settings: config,
+	}, nil
 }
 
 // Datasource is an example datasource which can respond to data queries, reports
 // its health and has streaming skills.
-type Datasource struct{}
+type Datasource struct {
+	settings *models.PluginSettings
+}
+
+const foxgloveAPIBaseURL = "https://api.foxglove.dev/v1"
+
+type queryModel struct {
+	DeviceName string `json:"deviceName"`
+	Topics     string `json:"topics"` // Comma-separated list of topics
+	Start      string `json:"start"`  // Start time in RFC3339 format (e.g., "2019-08-24T14:15:22Z")
+	End        string `json:"end"`    // End time in RFC3339 format (e.g., "2019-08-24T14:15:22Z")
+}
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
 // created. As soon as datasource settings change detected by SDK old datasource instance will
@@ -59,9 +81,7 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	return response, nil
 }
 
-type queryModel struct{}
-
-func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
+func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
 	var response backend.DataResponse
 
 	// Unmarshal the JSON into our queryModel.
@@ -72,45 +92,224 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
-	// create data frame response.
-	// For an overview on data frames and how grafana handles them:
-	// https://grafana.com/developers/plugin-tools/introduction/data-frames
-	frame := data.NewFrame("response")
+	// Validate required fields
+	if qm.DeviceName == "" {
+		return backend.ErrDataResponse(backend.StatusBadRequest, "deviceName is required")
+	}
 
-	// add fields.
+	// Use provided start/end times or fall back to query time range
+	startTime := qm.Start
+	endTime := qm.End
+	if startTime == "" {
+		startTime = query.TimeRange.From.Format(time.RFC3339)
+	}
+	if endTime == "" {
+		endTime = query.TimeRange.To.Format(time.RFC3339)
+	}
+
+	// Load settings to get API key
+	config, err := models.LoadPluginSettings(*pCtx.DataSourceInstanceSettings)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusInternal, fmt.Sprintf("failed to load settings: %v", err))
+	}
+
+	if config.Secrets.ApiKey == "" {
+		return backend.ErrDataResponse(backend.StatusBadRequest, "API key is not configured")
+	}
+
+	// Call Foxglove API
+	responseData, err := d.fetchFoxgloveStream(ctx, config, qm, startTime, endTime)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to fetch data: %v", err))
+	}
+
+	// Convert to data frames
+	frames, err := d.convertToDataFrames(responseData, qm)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to convert data: %v", err))
+	}
+
+	response.Frames = frames
+	return response
+}
+
+// fetchFoxgloveStream calls the Foxglove API /data/stream endpoint
+func (d *Datasource) fetchFoxgloveStream(ctx context.Context, config *models.PluginSettings, qm queryModel, startTime, endTime string) ([]byte, error) {
+	// Build request payload according to Foxglove API specification
+	// See: https://docs.foxglove.dev/api#tag/Stream-data
+	payload := map[string]interface{}{
+		"deviceName": qm.DeviceName,
+		"start":      startTime,
+		"end":        endTime,
+	}
+
+	// Parse comma-separated topics into array
+	if qm.Topics != "" {
+		parts := strings.Split(qm.Topics, ",")
+		topics := make([]string, 0, len(parts))
+		for _, part := range parts {
+			trimmed := strings.TrimSpace(part)
+			if trimmed != "" {
+				topics = append(topics, trimmed)
+			}
+		}
+		if len(topics) > 0 {
+			payload["topics"] = topics
+		}
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Use the correct endpoint: POST /v1/data/stream
+	url := fmt.Sprintf("%s/data/stream", foxgloveAPIBaseURL)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", config.Secrets.ApiKey))
+
+	// Make request
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		// Include the URL and request payload in the error for debugging
+		return nil, fmt.Errorf("API returned status %d for URL %s: %s (request: %s)", resp.StatusCode, url, string(body), string(jsonPayload))
+	}
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return body, nil
+}
+
+// convertToDataFrames converts Foxglove API response to Grafana data frames
+func (d *Datasource) convertToDataFrames(responseData []byte, qm queryModel) (data.Frames, error) {
+	// Parse the JSON response from Foxglove
+	// The exact structure depends on the Foxglove API response format
+	// This is a placeholder implementation - you'll need to adjust based on actual API response
+	
+	var result map[string]interface{}
+	if err := json.Unmarshal(responseData, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Create a frame for the data
+	frame := data.NewFrame("foxglove_data")
+
+	// Extract time and value fields from the response
+	// This is a simplified example - adjust based on actual Foxglove response structure
+	times := []time.Time{}
+	values := []float64{}
+
+	// Try to extract data points from the response
+	if messages, ok := result["messages"].([]interface{}); ok {
+		for _, msg := range messages {
+			if msgMap, ok := msg.(map[string]interface{}); ok {
+				// Extract timestamp (adjust field names based on actual API)
+				if timestamp, ok := msgMap["timestamp"].(float64); ok {
+					times = append(times, time.Unix(0, int64(timestamp*1e9)))
+				}
+				
+				// Extract value (adjust based on actual message structure)
+				if value, ok := msgMap["value"].(float64); ok {
+					values = append(values, value)
+				}
+			}
+		}
+	}
+
+	// If no data was extracted, create a simple frame with time range
+	if len(times) == 0 {
+		now := time.Now()
+		frame.Fields = append(frame.Fields,
+			data.NewField("time", nil, []time.Time{now.Add(-time.Hour), now}),
+			data.NewField("value", nil, []float64{0, 0}),
+		)
+		return data.Frames{frame}, nil
+	}
+
+	// Add fields to frame
 	frame.Fields = append(frame.Fields,
-		data.NewField("time", nil, []time.Time{query.TimeRange.From, query.TimeRange.To}),
-		data.NewField("values", nil, []int64{10, 20}),
+		data.NewField("time", nil, times),
+		data.NewField("value", nil, values),
 	)
 
-	// add the frames to the response.
-	response.Frames = append(response.Frames, frame)
-
-	return response
+	return data.Frames{frame}, nil
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
 // The main use case for these health checks is the test button on the
 // datasource configuration page which allows users to verify that
 // a datasource is working as expected.
-func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
-	res := &backend.CheckHealthResult{}
+func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRequest) (*backend.CheckHealthResult, error) {
 	config, err := models.LoadPluginSettings(*req.PluginContext.DataSourceInstanceSettings)
 
 	if err != nil {
-		res.Status = backend.HealthStatusError
-		res.Message = "Unable to load settings"
-		return res, nil
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: fmt.Sprintf("Unable to load settings: %v", err),
+		}, nil
 	}
 
 	if config.Secrets.ApiKey == "" {
-		res.Status = backend.HealthStatusError
-		res.Message = "API key is missing"
-		return res, nil
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: "API key is missing",
+		}, nil
+	}
+
+	// Test the API connection by making a simple request
+	// Try to list devices or make a lightweight API call
+	url := fmt.Sprintf("%s/devices", foxgloveAPIBaseURL)
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: fmt.Sprintf("Failed to create health check request: %v", err),
+		}, nil
+	}
+
+	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", config.Secrets.ApiKey))
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: fmt.Sprintf("Failed to connect to Foxglove API: %v", err),
+		}, nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(body)),
+		}, nil
 	}
 
 	return &backend.CheckHealthResult{
 		Status:  backend.HealthStatusOk,
-		Message: "Data source is working",
+		Message: "Successfully connected to Foxglove API",
 	}, nil
 }

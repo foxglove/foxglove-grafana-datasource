@@ -15,12 +15,15 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   applyTemplateVariables(query: MyQuery, scopedVars: ScopedVars) {
     return {
       ...query,
-      queryText: getTemplateSrv().replace(query.queryText, scopedVars),
+      deviceName: getTemplateSrv().replace(query.deviceName || '', scopedVars),
+      topics: getTemplateSrv().replace(query.topics || '', scopedVars),
+      start: getTemplateSrv().replace(query.start || '', scopedVars),
+      end: getTemplateSrv().replace(query.end || '', scopedVars),
     };
   }
 
   filterQuery(query: MyQuery): boolean {
-    // if no query has been provided, prevent the query from being executed
-    return !!query.queryText;
+    // if no deviceName has been provided, prevent the query from being executed
+    return !!query.deviceName;
   }
 }

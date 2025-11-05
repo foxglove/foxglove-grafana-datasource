@@ -1,43 +1,71 @@
 import React, { ChangeEvent } from 'react';
-import { InlineField, Input, Stack } from '@grafana/ui';
-import { QueryEditorProps } from '@grafana/data';
+import { InlineField, Input, Stack, DateTimePicker } from '@grafana/ui';
+import { QueryEditorProps, dateTime } from '@grafana/data';
 import { DataSource } from '../datasource';
 import { MyDataSourceOptions, MyQuery } from '../types';
 
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
 
-export function QueryEditor({ query, onChange, onRunQuery }: Props) {
-  const onQueryTextChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, queryText: event.target.value });
-  };
-
-  const onConstantChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, constant: parseFloat(event.target.value) });
-    // executes the query
+export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
+  const onDeviceNameChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onChange({ ...query, deviceName: event.target.value });
     onRunQuery();
   };
 
-  const { queryText, constant } = query;
+  const onTopicsChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onChange({ ...query, topics: event.target.value });
+  };
+
+  const onStartTimeChange = (value: dateTime | null) => {
+    // Convert to RFC3339 format (ISO 8601)
+    const rfc3339 = value ? value.toISOString() : '';
+    onChange({ ...query, start: rfc3339 });
+  };
+
+  const onEndTimeChange = (value: dateTime | null) => {
+    // Convert to RFC3339 format (ISO 8601)
+    const rfc3339 = value ? value.toISOString() : '';
+    onChange({ ...query, end: rfc3339 });
+  };
+
+  // Parse existing RFC3339 strings back to dateTime objects for the picker
+  const startTime = query.start ? dateTime(query.start) : null;
+  const endTime = query.end ? dateTime(query.end) : null;
+
+  const { deviceName, topics } = query;
 
   return (
-    <Stack gap={0}>
-      <InlineField label="Constant">
+    <Stack gap={2} direction="column">
+      <InlineField label="Device Name" labelWidth={14} required tooltip="The Foxglove device name to query" grow>
         <Input
-          id="query-editor-constant"
-          onChange={onConstantChange}
-          value={constant}
-          width={8}
-          type="number"
-          step="0.1"
+          id="query-editor-device-name"
+          onChange={onDeviceNameChange}
+          value={deviceName || ''}
+          placeholder="Enter device name"
+          width={30}
         />
       </InlineField>
-      <InlineField label="Query Text" labelWidth={16} tooltip="Not used yet">
+      <InlineField label="Start Time" labelWidth={14} tooltip="Start time. Leave empty to use dashboard time range." grow>
+        <DateTimePicker
+          date={startTime || range.from}
+          onChange={onStartTimeChange}
+          showSeconds={true}
+        />
+      </InlineField>
+      <InlineField label="End Time" labelWidth={14} tooltip="End time. Leave empty to use dashboard time range." grow>
+        <DateTimePicker
+          date={endTime || range.to}
+          onChange={onEndTimeChange}
+          showSeconds={true}
+        />
+      </InlineField>
+      <InlineField label="Topics" labelWidth={14} tooltip="Comma-separated list of topics (optional)" grow>
         <Input
-          id="query-editor-query-text"
-          onChange={onQueryTextChange}
-          value={queryText || ''}
-          required
-          placeholder="Enter a query"
+          id="query-editor-topics"
+          onChange={onTopicsChange}
+          value={topics || ''}
+          placeholder="topic1, topic2, topic3"
+          width={30}
         />
       </InlineField>
     </Stack>
