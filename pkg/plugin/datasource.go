@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/foxglove/foxglove-grafana-datasource/pkg/models"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	"github.com/foxglove-dev/foxglove/pkg/models"
 )
 
 // Make sure Datasource implements required interfaces. This is important to do
@@ -28,7 +28,7 @@ var (
 )
 
 // NewDatasource creates a new datasource instance.
-func NewDatasource(settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	config, err := models.LoadPluginSettings(settings)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load plugin settings: %w", err)
@@ -260,7 +260,7 @@ func (d *Datasource) convertToDataFrames(responseData []byte, qm queryModel) (da
 	// Parse the JSON response from Foxglove
 	// The exact structure depends on the Foxglove API response format
 	// This is a placeholder implementation - you'll need to adjust based on actual API response
-	
+
 	var result map[string]interface{}
 	if err := json.Unmarshal(responseData, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
@@ -282,7 +282,7 @@ func (d *Datasource) convertToDataFrames(responseData []byte, qm queryModel) (da
 				if timestamp, ok := msgMap["timestamp"].(float64); ok {
 					times = append(times, time.Unix(0, int64(timestamp*1e9)))
 				}
-				
+
 				// Extract value (adjust based on actual message structure)
 				if value, ok := msgMap["value"].(float64); ok {
 					values = append(values, value)
