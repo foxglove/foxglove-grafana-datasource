@@ -3,14 +3,20 @@ package plugin
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/foxglove/foxglove-grafana-datasource/pkg/models"
+	"github.com/foxglove/go-rosbag/ros1msg"
+	"github.com/foxglove/mcap/go/mcap"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
@@ -45,7 +51,7 @@ type Datasource struct {
 	settings *models.PluginSettings
 }
 
-const foxgloveAPIBaseURL = "https://api.foxglove.dev/v1"
+const foxgloveAPIBaseURL = "https://api.foxglove.party/v1"
 
 type queryModel struct {
 	DeviceName string `json:"deviceName"`
@@ -255,59 +261,223 @@ func (d *Datasource) downloadFile(ctx context.Context, fileURL string) ([]byte, 
 	return fileData, nil
 }
 
-// convertToDataFrames converts Foxglove API response to Grafana data frames
+// convertToDataFrames converts an MCAP file containing ROS1 messages into Grafana data frames.
+// Each ROS1 message is expected to contain a single primitive numeric value. The topic name is
+// used as both the frame name and the numeric field name.
 func (d *Datasource) convertToDataFrames(responseData []byte, qm queryModel) (data.Frames, error) {
-	// Parse the JSON response from Foxglove
-	// The exact structure depends on the Foxglove API response format
-	// This is a placeholder implementation - you'll need to adjust based on actual API response
+	reader, err := mcap.NewReader(bytes.NewReader(responseData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to open MCAP reader: %w", err)
+	}
+	defer reader.Close()
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(responseData, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	it, err := reader.Messages()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create MCAP iterator: %w", err)
 	}
 
-	// Create a frame for the data
-	frame := data.NewFrame("foxglove_data")
+	type series struct {
+		times  []time.Time
+		values []float64
+	}
 
-	// Extract time and value fields from the response
-	// This is a simplified example - adjust based on actual Foxglove response structure
-	times := []time.Time{}
-	values := []float64{}
+	seriesByTopic := make(map[string]*series)
+	schemas := make(map[uint16]*mcap.Schema)
+	decoders := make(map[uint16]numericDecoder)
 
-	// Try to extract data points from the response
-	if messages, ok := result["messages"].([]interface{}); ok {
-		for _, msg := range messages {
-			if msgMap, ok := msg.(map[string]interface{}); ok {
-				// Extract timestamp (adjust field names based on actual API)
-				if timestamp, ok := msgMap["timestamp"].(float64); ok {
-					times = append(times, time.Unix(0, int64(timestamp*1e9)))
-				}
-
-				// Extract value (adjust based on actual message structure)
-				if value, ok := msgMap["value"].(float64); ok {
-					values = append(values, value)
-				}
+	for {
+		schema, channel, message, iterErr := it.Next(nil)
+		if iterErr != nil {
+			if errors.Is(iterErr, io.EOF) {
+				break
 			}
+			return nil, fmt.Errorf("failed to iterate MCAP messages: %w", iterErr)
 		}
+		if channel == nil {
+			return nil, fmt.Errorf("encountered MCAP message with no channel information")
+		}
+		topic := channel.Topic
+		if topic == "" {
+			return nil, fmt.Errorf("encountered MCAP channel %d with empty topic", channel.ID)
+		}
+
+		if schema != nil {
+			schemas[schema.ID] = schema
+		}
+		schemaID := channel.SchemaID
+		if schemaID == 0 {
+			return nil, fmt.Errorf("channel %s has no associated schema", topic)
+		}
+		schema = schemas[schemaID]
+		if schema == nil {
+			return nil, fmt.Errorf("missing schema %d for topic %s", schemaID, topic)
+		}
+
+		decoder, ok := decoders[schemaID]
+		if !ok {
+			decoder, err = newROS1NumericDecoder(schema)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build decoder for topic %s: %w", topic, err)
+			}
+			decoders[schemaID] = decoder
+		}
+
+		value, err := decoder(message.Data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode message for topic %s: %w", topic, err)
+		}
+
+		timestamp := message.LogTime
+		if timestamp == 0 {
+			timestamp = message.PublishTime
+		}
+		if timestamp == 0 {
+			return nil, fmt.Errorf("message on topic %s has no timestamp", topic)
+		}
+		if timestamp > math.MaxInt64 {
+			return nil, fmt.Errorf("timestamp overflow for topic %s", topic)
+		}
+
+		ts := time.Unix(0, int64(timestamp))
+		seq := seriesByTopic[topic]
+		if seq == nil {
+			seq = &series{}
+			seriesByTopic[topic] = seq
+		}
+		seq.times = append(seq.times, ts)
+		seq.values = append(seq.values, value)
 	}
 
-	// If no data was extracted, create a simple frame with time range
-	if len(times) == 0 {
-		now := time.Now()
+	if len(seriesByTopic) == 0 {
+		return data.Frames{}, nil
+	}
+
+	topics := make([]string, 0, len(seriesByTopic))
+	for topic := range seriesByTopic {
+		topics = append(topics, topic)
+	}
+	sort.Strings(topics)
+
+	frames := make(data.Frames, 0, len(topics))
+	for _, topic := range topics {
+		seq := seriesByTopic[topic]
+		if len(seq.times) == 0 {
+			continue
+		}
+		frame := data.NewFrame(topic)
 		frame.Fields = append(frame.Fields,
-			data.NewField("time", nil, []time.Time{now.Add(-time.Hour), now}),
-			data.NewField("value", nil, []float64{0, 0}),
+			data.NewField("time", nil, seq.times),
+			data.NewField(topic, nil, seq.values),
 		)
-		return data.Frames{frame}, nil
+		frames = append(frames, frame)
 	}
 
-	// Add fields to frame
-	frame.Fields = append(frame.Fields,
-		data.NewField("time", nil, times),
-		data.NewField("value", nil, values),
-	)
+	return frames, nil
+}
 
-	return data.Frames{frame}, nil
+type numericDecoder func([]byte) (float64, error)
+
+func newROS1NumericDecoder(schema *mcap.Schema) (numericDecoder, error) {
+	if schema.Encoding != "ros1msg" {
+		return nil, fmt.Errorf("unsupported schema encoding %q", schema.Encoding)
+	}
+	parentPackage := ""
+	if idx := strings.Index(schema.Name, "/"); idx != -1 {
+		parentPackage = schema.Name[:idx]
+	}
+
+	fields, err := ros1msg.ParseMessageDefinition(parentPackage, schema.Data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ROS1 message definition: %w", err)
+	}
+	if len(fields) != 1 {
+		return nil, fmt.Errorf("expected a single field, found %d", len(fields))
+	}
+	field := fields[0]
+	if field.Type.IsArray {
+		return nil, fmt.Errorf("array field %q is not supported", field.Name)
+	}
+	if field.Type.IsRecord {
+		return nil, fmt.Errorf("record field %q is not supported", field.Name)
+	}
+	if strings.Contains(field.Type.BaseType, "/") {
+		return nil, fmt.Errorf("nested type %q is not supported", field.Type.BaseType)
+	}
+
+	switch field.Type.BaseType {
+	case "float64":
+		return func(data []byte) (float64, error) {
+			if len(data) < 8 {
+				return 0, io.ErrUnexpectedEOF
+			}
+			return math.Float64frombits(binary.LittleEndian.Uint64(data[:8])), nil
+		}, nil
+	case "float32":
+		return func(data []byte) (float64, error) {
+			if len(data) < 4 {
+				return 0, io.ErrUnexpectedEOF
+			}
+			return float64(math.Float32frombits(binary.LittleEndian.Uint32(data[:4]))), nil
+		}, nil
+	case "int8":
+		return func(data []byte) (float64, error) {
+			if len(data) < 1 {
+				return 0, io.ErrUnexpectedEOF
+			}
+			return float64(int8(data[0])), nil
+		}, nil
+	case "uint8", "char", "byte":
+		return func(data []byte) (float64, error) {
+			if len(data) < 1 {
+				return 0, io.ErrUnexpectedEOF
+			}
+			return float64(data[0]), nil
+		}, nil
+	case "int16":
+		return func(data []byte) (float64, error) {
+			if len(data) < 2 {
+				return 0, io.ErrUnexpectedEOF
+			}
+			return float64(int16(binary.LittleEndian.Uint16(data[:2]))), nil
+		}, nil
+	case "uint16":
+		return func(data []byte) (float64, error) {
+			if len(data) < 2 {
+				return 0, io.ErrUnexpectedEOF
+			}
+			return float64(binary.LittleEndian.Uint16(data[:2])), nil
+		}, nil
+	case "int32":
+		return func(data []byte) (float64, error) {
+			if len(data) < 4 {
+				return 0, io.ErrUnexpectedEOF
+			}
+			return float64(int32(binary.LittleEndian.Uint32(data[:4]))), nil
+		}, nil
+	case "uint32":
+		return func(data []byte) (float64, error) {
+			if len(data) < 4 {
+				return 0, io.ErrUnexpectedEOF
+			}
+			return float64(binary.LittleEndian.Uint32(data[:4])), nil
+		}, nil
+	case "int64":
+		return func(data []byte) (float64, error) {
+			if len(data) < 8 {
+				return 0, io.ErrUnexpectedEOF
+			}
+			return float64(int64(binary.LittleEndian.Uint64(data[:8]))), nil
+		}, nil
+	case "uint64":
+		return func(data []byte) (float64, error) {
+			if len(data) < 8 {
+				return 0, io.ErrUnexpectedEOF
+			}
+			return float64(binary.LittleEndian.Uint64(data[:8])), nil
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported primitive type %q", field.Type.BaseType)
+	}
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
