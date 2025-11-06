@@ -149,16 +149,26 @@ func (d *Datasource) fetchFoxgloveStream(ctx context.Context, config *models.Plu
 	// Split selected fields by comma.
 	topics := []string{}
 	messagePathSets := map[string]any{}
-	messagePaths := strings.SplitSeq(qm.Topics, ",")
-	for messagePath := range messagePaths {
+	for _, raw := range strings.Split(qm.Topics, ",") {
+		messagePath := strings.TrimSpace(raw)
+		if messagePath == "" {
+			continue
+		}
 		// Decompose message path into (topic, field[, field...])
 		parts := strings.Split(messagePath, ".")
+		if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+			return nil, fmt.Errorf("invalid message path %q", messagePath)
+		}
 		topic := parts[0]
 		if !slices.Contains(topics, topic) {
 			topics = append(topics, topic)
 		}
-		selectorPaths := []any{}
+		selectorPaths := make([]any, 0, len(parts)-1)
 		for _, field := range parts[1:] {
+			field = strings.TrimSpace(field)
+			if field == "" {
+				return nil, fmt.Errorf("invalid empty field selector in %q", messagePath)
+			}
 			selectorPaths = append(selectorPaths, map[string]any{
 				"kind":  "field",
 				"field": field,
@@ -295,7 +305,7 @@ func (d *Datasource) convertToDataFrames(responseData []byte, qm queryModel) (da
 
 	type series struct {
 		times  []time.Time
-		values []float64
+		values []*float64
 	}
 
 	seriesByTopic := make(map[string]*series)
@@ -392,7 +402,7 @@ func (d *Datasource) convertToDataFrames(responseData []byte, qm queryModel) (da
 	return frames, nil
 }
 
-type numericDecoder func([]byte) (float64, error)
+type numericDecoder func([]byte) (*float64, error)
 
 func newROS1NumericDecoder(schema *mcap.Schema) (numericDecoder, error) {
 	if schema.Encoding != "ros1msg" {
@@ -411,90 +421,154 @@ func newROS1NumericDecoder(schema *mcap.Schema) (numericDecoder, error) {
 		return nil, fmt.Errorf("expected a single field, found %d", len(fields))
 	}
 	field := fields[0]
-	if field.Type.IsArray {
-		return nil, fmt.Errorf("array field %q is not supported", field.Name)
-	}
 	if field.Type.IsRecord {
 		return nil, fmt.Errorf("record field %q is not supported", field.Name)
 	}
+
+	if field.Type.IsArray {
+		if field.Type.Items == nil {
+			return nil, fmt.Errorf("array field %q is missing item definition", field.Name)
+		}
+		if field.Type.Items.IsRecord {
+			return nil, fmt.Errorf("array field %q contains non-primitive items", field.Name)
+		}
+		if strings.Contains(field.Type.Items.BaseType, "/") {
+			return nil, fmt.Errorf("nested type %q is not supported", field.Type.Items.BaseType)
+		}
+
+		elemDecoder, err := makePrimitiveValueDecoder(field.Type.Items.BaseType)
+		if err != nil {
+			return nil, fmt.Errorf("unsupported array primitive type %q: %w", field.Type.Items.BaseType, err)
+		}
+
+		fixedSize := field.Type.FixedSize
+		return func(data []byte) (*float64, error) {
+			count, offset, err := decodeROSArrayLength(data, fixedSize)
+			if err != nil {
+				return nil, err
+			}
+			if count == 0 {
+				return nil, nil
+			}
+			if count != 1 {
+				return nil, fmt.Errorf("expected at most one element in array field %q, found %d", field.Name, count)
+			}
+			value, _, err := elemDecoder(data[offset:])
+			if err != nil {
+				return nil, err
+			}
+			v := value
+			return &v, nil
+		}, nil
+	}
+
 	if strings.Contains(field.Type.BaseType, "/") {
 		return nil, fmt.Errorf("nested type %q is not supported", field.Type.BaseType)
 	}
 
-	switch field.Type.BaseType {
+	primitiveDecoder, err := makePrimitiveValueDecoder(field.Type.BaseType)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(data []byte) (*float64, error) {
+		value, _, err := primitiveDecoder(data)
+		if err != nil {
+			return nil, err
+		}
+		v := value
+		return &v, nil
+	}, nil
+}
+
+type primitiveValueDecoder func([]byte) (float64, int, error)
+
+func makePrimitiveValueDecoder(baseType string) (primitiveValueDecoder, error) {
+	switch baseType {
 	case "float64":
-		return func(data []byte) (float64, error) {
+		return func(data []byte) (float64, int, error) {
 			if len(data) < 8 {
-				return 0, io.ErrUnexpectedEOF
+				return 0, 0, io.ErrUnexpectedEOF
 			}
-			return math.Float64frombits(binary.LittleEndian.Uint64(data[:8])), nil
+			return math.Float64frombits(binary.LittleEndian.Uint64(data[:8])), 8, nil
 		}, nil
 	case "float32":
-		return func(data []byte) (float64, error) {
+		return func(data []byte) (float64, int, error) {
 			if len(data) < 4 {
-				return 0, io.ErrUnexpectedEOF
+				return 0, 0, io.ErrUnexpectedEOF
 			}
-			return float64(math.Float32frombits(binary.LittleEndian.Uint32(data[:4]))), nil
+			return float64(math.Float32frombits(binary.LittleEndian.Uint32(data[:4]))), 4, nil
 		}, nil
 	case "int8":
-		return func(data []byte) (float64, error) {
+		return func(data []byte) (float64, int, error) {
 			if len(data) < 1 {
-				return 0, io.ErrUnexpectedEOF
+				return 0, 0, io.ErrUnexpectedEOF
 			}
-			return float64(int8(data[0])), nil
+			return float64(int8(data[0])), 1, nil
 		}, nil
 	case "uint8", "char", "byte":
-		return func(data []byte) (float64, error) {
+		return func(data []byte) (float64, int, error) {
 			if len(data) < 1 {
-				return 0, io.ErrUnexpectedEOF
+				return 0, 0, io.ErrUnexpectedEOF
 			}
-			return float64(data[0]), nil
+			return float64(data[0]), 1, nil
 		}, nil
 	case "int16":
-		return func(data []byte) (float64, error) {
+		return func(data []byte) (float64, int, error) {
 			if len(data) < 2 {
-				return 0, io.ErrUnexpectedEOF
+				return 0, 0, io.ErrUnexpectedEOF
 			}
-			return float64(int16(binary.LittleEndian.Uint16(data[:2]))), nil
+			return float64(int16(binary.LittleEndian.Uint16(data[:2]))), 2, nil
 		}, nil
 	case "uint16":
-		return func(data []byte) (float64, error) {
+		return func(data []byte) (float64, int, error) {
 			if len(data) < 2 {
-				return 0, io.ErrUnexpectedEOF
+				return 0, 0, io.ErrUnexpectedEOF
 			}
-			return float64(binary.LittleEndian.Uint16(data[:2])), nil
+			return float64(binary.LittleEndian.Uint16(data[:2])), 2, nil
 		}, nil
 	case "int32":
-		return func(data []byte) (float64, error) {
+		return func(data []byte) (float64, int, error) {
 			if len(data) < 4 {
-				return 0, io.ErrUnexpectedEOF
+				return 0, 0, io.ErrUnexpectedEOF
 			}
-			return float64(int32(binary.LittleEndian.Uint32(data[:4]))), nil
+			return float64(int32(binary.LittleEndian.Uint32(data[:4]))), 4, nil
 		}, nil
 	case "uint32":
-		return func(data []byte) (float64, error) {
+		return func(data []byte) (float64, int, error) {
 			if len(data) < 4 {
-				return 0, io.ErrUnexpectedEOF
+				return 0, 0, io.ErrUnexpectedEOF
 			}
-			return float64(binary.LittleEndian.Uint32(data[:4])), nil
+			return float64(binary.LittleEndian.Uint32(data[:4])), 4, nil
 		}, nil
 	case "int64":
-		return func(data []byte) (float64, error) {
+		return func(data []byte) (float64, int, error) {
 			if len(data) < 8 {
-				return 0, io.ErrUnexpectedEOF
+				return 0, 0, io.ErrUnexpectedEOF
 			}
-			return float64(int64(binary.LittleEndian.Uint64(data[:8]))), nil
+			return float64(int64(binary.LittleEndian.Uint64(data[:8]))), 8, nil
 		}, nil
 	case "uint64":
-		return func(data []byte) (float64, error) {
+		return func(data []byte) (float64, int, error) {
 			if len(data) < 8 {
-				return 0, io.ErrUnexpectedEOF
+				return 0, 0, io.ErrUnexpectedEOF
 			}
-			return float64(binary.LittleEndian.Uint64(data[:8])), nil
+			return float64(binary.LittleEndian.Uint64(data[:8])), 8, nil
 		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported primitive type %q", field.Type.BaseType)
+		return nil, fmt.Errorf("unsupported primitive type %q", baseType)
 	}
+}
+
+func decodeROSArrayLength(data []byte, fixedSize int) (int, int, error) {
+	if fixedSize > 0 {
+		return fixedSize, 0, nil
+	}
+	if len(data) < 4 {
+		return 0, 0, io.ErrUnexpectedEOF
+	}
+	length := int(binary.LittleEndian.Uint32(data[:4]))
+	return length, 4, nil
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
