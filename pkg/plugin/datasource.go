@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -141,27 +142,43 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 
 // fetchFoxgloveStream calls the Foxglove API /data/stream endpoint
 func (d *Datasource) fetchFoxgloveStream(ctx context.Context, config *models.PluginSettings, qm queryModel, startTime, endTime string) ([]byte, error) {
-	// Build request payload according to Foxglove API specification
-	// See: https://docs.foxglove.dev/api#tag/Stream-data
-	payload := map[string]interface{}{
-		"deviceName": qm.DeviceName,
-		"start":      startTime,
-		"end":        endTime,
+	if qm.Topics == "" {
+		return nil, fmt.Errorf("must select at least one topic")
 	}
 
-	// Parse comma-separated topics into array
-	if qm.Topics != "" {
-		parts := strings.Split(qm.Topics, ",")
-		topics := make([]string, 0, len(parts))
-		for _, part := range parts {
-			trimmed := strings.TrimSpace(part)
-			if trimmed != "" {
-				topics = append(topics, trimmed)
-			}
+	// Split selected fields by comma.
+	topics := []string{}
+	messagePathSets := map[string]any{}
+	messagePaths := strings.SplitSeq(qm.Topics, ",")
+	for messagePath := range messagePaths {
+		// Decompose message path into (topic, field[, field...])
+		parts := strings.Split(messagePath, ".")
+		topic := parts[0]
+		if !slices.Contains(topics, topic) {
+			topics = append(topics, topic)
 		}
-		if len(topics) > 0 {
-			payload["topics"] = topics
+		selectorPaths := []any{}
+		for _, field := range parts[1:] {
+			selectorPaths = append(selectorPaths, map[string]any{
+				"kind":  "field",
+				"field": field,
+			})
 		}
+		messagePathSets[messagePath] = map[string]any{
+			"topic":         topic,
+			"selectorPaths": []any{selectorPaths},
+		}
+	}
+
+	// Build request payload according to Foxglove API specification
+	// See: https://docs.foxglove.dev/api#tag/Stream-data
+	payload := map[string]any{
+		"deviceName":      qm.DeviceName,
+		"start":           startTime,
+		"end":             endTime,
+		"topics":          topics,
+		"messagePathSets": messagePathSets,
+		"outputFormat":    "mcap",
 	}
 
 	jsonPayload, err := json.Marshal(payload)
