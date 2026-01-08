@@ -1,6 +1,6 @@
 import React, { ChangeEvent } from 'react';
 import { InlineField, Input, Stack, DateTimePicker } from '@grafana/ui';
-import { QueryEditorProps, dateTime } from '@grafana/data';
+import { QueryEditorProps, dateTime, DateTime } from '@grafana/data';
 import { DataSource } from '../datasource';
 import { MyDataSourceOptions, MyQuery } from '../types';
 
@@ -16,21 +16,21 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     onChange({ ...query, topics: event.target.value });
   };
 
-  const onStartTimeChange = (value: dateTime | null) => {
+  const onStartTimeChange = (value?: DateTime) => {
     // Convert to RFC3339 format (ISO 8601)
     const rfc3339 = value ? value.toISOString() : '';
     onChange({ ...query, start: rfc3339 });
   };
 
-  const onEndTimeChange = (value: dateTime | null) => {
+  const onEndTimeChange = (value?: DateTime) => {
     // Convert to RFC3339 format (ISO 8601)
     const rfc3339 = value ? value.toISOString() : '';
     onChange({ ...query, end: rfc3339 });
   };
 
   // Parse existing RFC3339 strings back to dateTime objects for the picker
-  const startTime = query.start ? dateTime(query.start) : null;
-  const endTime = query.end ? dateTime(query.end) : null;
+  const startTime: DateTime | null = query.start ? dateTime(query.start) : null;
+  const endTime: DateTime | null = query.end ? dateTime(query.end) : null;
 
   const { deviceName, topics } = query;
 
@@ -47,14 +47,14 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
       </InlineField>
       <InlineField label="Start Time" labelWidth={14} tooltip="Start time. Leave empty to use dashboard time range." grow>
         <DateTimePicker
-          date={startTime || range.from}
+          date={startTime ?? range?.from}
           onChange={onStartTimeChange}
           showSeconds={true}
         />
       </InlineField>
       <InlineField label="End Time" labelWidth={14} tooltip="End time. Leave empty to use dashboard time range." grow>
         <DateTimePicker
-          date={endTime || range.to}
+          date={endTime ?? range?.to}
           onChange={onEndTimeChange}
           showSeconds={true}
         />
