@@ -48,10 +48,12 @@ type Datasource struct {
 const defaultAPIBaseURL = "https://api.foxglove.dev"
 
 func getAPIBaseURL(config *models.PluginSettings) string {
-	// Prefer configured path from jsonData.path if provided
+	// Prefer configured baseUrl, fall back to legacy jsonData.path
 	if config != nil {
+		if base := strings.TrimSpace(config.BaseURL); base != "" {
+			return strings.TrimRight(base, "/")
+		}
 		if base := strings.TrimSpace(config.Path); base != "" {
-			// normalize trailing slash
 			return strings.TrimRight(base, "/")
 		}
 	}
