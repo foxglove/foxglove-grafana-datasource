@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/foxglove-dev/foxglove/pkg/models"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
-	"github.com/foxglove-dev/foxglove/pkg/models"
 )
 
 // Make sure Datasource implements required interfaces. This is important to do
@@ -45,7 +45,18 @@ type Datasource struct {
 	settings *models.PluginSettings
 }
 
-const foxgloveAPIBaseURL = "https://api.foxglove.dev/v1"
+const defaultAPIBaseURL = "https://api.foxglove.dev"
+
+func getAPIBaseURL(config *models.PluginSettings) string {
+	// Prefer configured path from jsonData.path if provided
+	if config != nil {
+		if base := strings.TrimSpace(config.Path); base != "" {
+			// normalize trailing slash
+			return strings.TrimRight(base, "/")
+		}
+	}
+	return defaultAPIBaseURL
+}
 
 type queryModel struct {
 	DeviceName string `json:"deviceName"`
@@ -163,8 +174,9 @@ func (d *Datasource) fetchFoxgloveStream(ctx context.Context, config *models.Plu
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Use the correct endpoint: POST /v1/data/stream
-	url := fmt.Sprintf("%s/data/stream", foxgloveAPIBaseURL)
+	// Use the correct endpoint: POST /v1/data/stream with configurable base URL
+	baseURL := getAPIBaseURL(config)
+	url := fmt.Sprintf("%s/v1/data/stream", baseURL)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonPayload))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -260,7 +272,7 @@ func (d *Datasource) convertToDataFrames(responseData []byte, qm queryModel) (da
 	// Parse the JSON response from Foxglove
 	// The exact structure depends on the Foxglove API response format
 	// This is a placeholder implementation - you'll need to adjust based on actual API response
-	
+
 	var result map[string]interface{}
 	if err := json.Unmarshal(responseData, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
@@ -282,7 +294,7 @@ func (d *Datasource) convertToDataFrames(responseData []byte, qm queryModel) (da
 				if timestamp, ok := msgMap["timestamp"].(float64); ok {
 					times = append(times, time.Unix(0, int64(timestamp*1e9)))
 				}
-				
+
 				// Extract value (adjust based on actual message structure)
 				if value, ok := msgMap["value"].(float64); ok {
 					values = append(values, value)
@@ -333,7 +345,8 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 
 	// Test the API connection by making a simple request
 	// Try to list devices or make a lightweight API call
-	url := fmt.Sprintf("%s/devices", foxgloveAPIBaseURL)
+	baseURL := getAPIBaseURL(config)
+	url := fmt.Sprintf("%s/v1/devices", baseURL)
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return &backend.CheckHealthResult{

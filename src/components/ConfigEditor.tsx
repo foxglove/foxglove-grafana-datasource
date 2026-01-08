@@ -9,12 +9,12 @@ export function ConfigEditor(props: Props) {
   const { onOptionsChange, options } = props;
   const { jsonData, secureJsonFields, secureJsonData } = options;
 
-  const onPathChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const onBaseUrlChange = (event: ChangeEvent<HTMLInputElement>) => {
     onOptionsChange({
       ...options,
       jsonData: {
         ...jsonData,
-        path: event.target.value,
+        baseUrl: event.target.value,
       },
     });
   };
@@ -48,13 +48,18 @@ export function ConfigEditor(props: Props) {
       <InlineField label="API Base URL" labelWidth={14} interactive tooltip={'Optional: Override the default Foxglove API base URL'}>
         <Input
           id="config-editor-path"
-          onChange={onPathChange}
-          value={jsonData.path}
-          placeholder="https://api.foxglove.dev/v1"
+          onChange={onBaseUrlChange}
+          value={jsonData.baseUrl}
+          placeholder="https://api.foxglove.dev"
           width={40}
         />
       </InlineField>
-      <InlineField label="API Key" labelWidth={14} interactive tooltip={'Secure json field (backend only)'}>
+      <InlineField
+        label="API Key"
+        labelWidth={14}
+        interactive
+        tooltip={'Stored securely and only sent to the backend. For provisioning/CI you can also set the FOXGLOVE_API_KEY environment variable.'}
+      >
         <SecretInput
           required
           id="config-editor-api-key"

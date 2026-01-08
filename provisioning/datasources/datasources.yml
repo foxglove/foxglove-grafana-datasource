@@ -9,6 +9,6 @@ datasources:
     version: 1
     editable: true
     jsonData:
-      path: '/resources'
+      baseUrl: ${FOXGLOVE_API_BASE_URL}
     secureJsonData:
-      apiKey: 'api-key'
+      apiKey: ${FOXGLOVE_API_KEY}
