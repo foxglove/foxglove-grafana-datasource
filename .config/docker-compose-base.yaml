@@ -1,7 +1,17 @@
 services:
+  foxglove-mock:
+    container_name: 'foxglove-mock'
+    image: node:22-alpine
+    working_dir: /app
+    command: ["node", "server.js"]
+    volumes:
+      - ./foxglove-mock:/app
+
   grafana:
     user: root
     container_name: 'foxglovedev-foxglove-datasource'
+    depends_on:
+      - foxglove-mock
 
     build:
       context: .
