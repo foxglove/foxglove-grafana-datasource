@@ -65,9 +65,6 @@ type queryModel struct {
 	MessagePath string            `json:"messagePath"`
 	DeviceNames []string          `json:"deviceNames"`
 	Metadata    map[string]string `json:"metadata"`
-	// Legacy fields (for backward compatibility and migration)
-	DeviceName string `json:"deviceName"`
-	Topics     string `json:"topics"` // Comma-separated list of topics
 }
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
@@ -108,20 +105,6 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
-	// Backward compatibility: map legacy fields if new ones are empty
-	if strings.TrimSpace(qm.MessagePath) == "" && strings.TrimSpace(qm.Topics) != "" {
-		parts := strings.Split(qm.Topics, ",")
-		for _, p := range parts {
-			pt := strings.TrimSpace(p)
-			if pt != "" {
-				qm.MessagePath = pt
-				break
-			}
-		}
-	}
-	if len(qm.DeviceNames) == 0 && strings.TrimSpace(qm.DeviceName) != "" {
-		qm.DeviceNames = []string{strings.TrimSpace(qm.DeviceName)}
-	}
 	if qm.Metadata == nil {
 		qm.Metadata = map[string]string{}
 	}
