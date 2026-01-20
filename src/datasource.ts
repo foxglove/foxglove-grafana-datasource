@@ -13,17 +13,34 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   }
 
   applyTemplateVariables(query: MyQuery, scopedVars: ScopedVars) {
+    const tpl = getTemplateSrv();
+    const replaceArray = (arr?: string[]) => (arr ?? []).map((s) => tpl.replace(s || '', scopedVars));
+    const replaceRecord = (rec?: Record<string, string>) => {
+      const out: Record<string, string> = {};
+      if (rec) {
+        for (const [k, v] of Object.entries(rec)) {
+          out[k] = tpl.replace(v || '', scopedVars);
+        }
+      }
+      return out;
+    };
+
     return {
       ...query,
-      deviceName: getTemplateSrv().replace(query.deviceName || '', scopedVars),
-      topics: getTemplateSrv().replace(query.topics || '', scopedVars),
-      start: getTemplateSrv().replace(query.start || '', scopedVars),
-      end: getTemplateSrv().replace(query.end || '', scopedVars),
+      // New model
+      messagePaths: replaceArray(query.messagePaths),
+      deviceNames: replaceArray(query.deviceNames),
+      metadata: replaceRecord(query.metadata),
+      start: tpl.replace(query.start || '', scopedVars),
+      end: tpl.replace(query.end || '', scopedVars),
+      // Legacy fields (kept for migration/back-compat)
+      deviceName: tpl.replace(query.deviceName || '', scopedVars),
+      topics: tpl.replace(query.topics || '', scopedVars),
     };
   }
 
   filterQuery(query: MyQuery): boolean {
-    // if no deviceName has been provided, prevent the query from being executed
-    return !!query.deviceName;
+    // Require at least one message path
+    return Array.isArray(query.messagePaths) && query.messagePaths.length > 0;
   }
 }

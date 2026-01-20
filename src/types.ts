@@ -2,15 +2,21 @@ import { DataSourceJsonData } from '@grafana/data';
 import { DataQuery } from '@grafana/schema';
 
 export interface MyQuery extends DataQuery {
+  // New query model
+  messagePaths?: string[];
+  deviceNames?: string[];
+  metadata?: Record<string, string>;
+  start?: string; // RFC3339
+  end?: string; // RFC3339
+  // Legacy fields (kept for migration/back-compat in UI)
   deviceName?: string;
-  topics?: string; // Comma-separated list of topics
-  start?: string; // Start time in RFC3339 format (e.g., "2019-08-24T14:15:22Z")
-  end?: string; // End time in RFC3339 format (e.g., "2019-08-24T14:15:22Z")
+  topics?: string; // Comma-separated
 }
 
 export const DEFAULT_QUERY: Partial<MyQuery> = {
-  deviceName: '',
-  topics: '',
+  messagePaths: [],
+  deviceNames: [],
+  metadata: {},
   start: '',
   end: '',
 };

@@ -7,15 +7,6 @@ import { MyDataSourceOptions, MyQuery } from '../types';
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
 
 export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
-  const onDeviceNameChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, deviceName: event.target.value });
-    onRunQuery();
-  };
-
-  const onTopicsChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, topics: event.target.value });
-  };
-
   const onStartTimeChange = (value?: DateTime) => {
     // Convert to RFC3339 format (ISO 8601)
     const rfc3339 = value ? value.toISOString() : '';
@@ -28,21 +19,53 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
     onChange({ ...query, end: rfc3339 });
   };
 
+  const onMessagePathsChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const raw = event.target.value || '';
+    const arr = raw.split(',').map((s) => s.trim()).filter(Boolean);
+    onChange({ ...query, messagePaths: arr });
+  };
+
+  const onDeviceNamesChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const raw = event.target.value || '';
+    const arr = raw.split(',').map((s) => s.trim()).filter(Boolean);
+    onChange({ ...query, deviceNames: arr });
+  };
+
+  const onMetadataChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const raw = event.target.value || '';
+    const rec: Record<string, string> = {};
+    raw.split(',').map((pair) => pair.trim()).filter(Boolean).forEach((pair) => {
+      const idx = pair.indexOf('=');
+      if (idx > 0) {
+        const key = pair.slice(0, idx).trim();
+        const value = pair.slice(idx + 1).trim();
+        if (key) {
+          rec[key] = value;
+        }
+      }
+    });
+    onChange({ ...query, metadata: rec });
+  };
+
   // Parse existing RFC3339 strings back to dateTime objects for the picker
   const startTime: DateTime | null = query.start ? dateTime(query.start) : null;
   const endTime: DateTime | null = query.end ? dateTime(query.end) : null;
 
-  const { deviceName, topics } = query;
+  const messagePathsDisplay = (query.messagePaths ?? []).join(', ');
+  const deviceNamesDisplay = (query.deviceNames ?? []).join(', ');
+  const metadataDisplay = Object.entries(query.metadata ?? {})
+    .map(([k, v]) => `${k}=${v}`)
+    .join(', ');
 
   return (
     <Stack gap={2} direction="column">
-      <InlineField label="Device Name" labelWidth={14} required tooltip="The Foxglove device name to query" grow>
+      <InlineField label="Message Paths" labelWidth={14} required tooltip="Comma-separated list of message paths to read" grow>
         <Input
-          id="query-editor-device-name"
-          onChange={onDeviceNameChange}
-          value={deviceName || ''}
-          placeholder="Enter device name"
-          width={30}
+          id="query-editor-message-paths"
+          onChange={onMessagePathsChange}
+          value={messagePathsDisplay}
+          placeholder="/topic.field, /other"
+          width={40}
         />
       </InlineField>
       <InlineField label="Start Time" labelWidth={14} tooltip="Start time. Leave empty to use dashboard time range." grow>
@@ -59,13 +82,22 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
           showSeconds={true}
         />
       </InlineField>
-      <InlineField label="Topics" labelWidth={14} tooltip="Comma-separated list of topics (optional)" grow>
+      <InlineField label="Device Names" labelWidth={14} tooltip="Optional: comma-separated device names to filter" grow>
         <Input
-          id="query-editor-topics"
-          onChange={onTopicsChange}
-          value={topics || ''}
-          placeholder="topic1, topic2, topic3"
-          width={30}
+          id="query-editor-device-names"
+          onChange={onDeviceNamesChange}
+          value={deviceNamesDisplay}
+          placeholder="deviceA, deviceB"
+          width={40}
+        />
+      </InlineField>
+      <InlineField label="Metadata" labelWidth={14} tooltip="Optional: comma-separated key=value pairs" grow>
+        <Input
+          id="query-editor-metadata"
+          onChange={onMetadataChange}
+          value={metadataDisplay}
+          placeholder="env=prod, site=abc"
+          width={40}
         />
       </InlineField>
     </Stack>

@@ -61,10 +61,15 @@ func getAPIBaseURL(config *models.PluginSettings) string {
 }
 
 type queryModel struct {
+	// New model
+	MessagePaths []string          `json:"messagePaths"`
+	DeviceNames  []string          `json:"deviceNames"`
+	Metadata     map[string]string `json:"metadata"`
+	Start        string            `json:"start"` // RFC3339 format
+	End          string            `json:"end"`   // RFC3339 format
+	// Legacy fields (for backward compatibility and migration)
 	DeviceName string `json:"deviceName"`
 	Topics     string `json:"topics"` // Comma-separated list of topics
-	Start      string `json:"start"`  // Start time in RFC3339 format (e.g., "2019-08-24T14:15:22Z")
-	End        string `json:"end"`    // End time in RFC3339 format (e.g., "2019-08-24T14:15:22Z")
 }
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
@@ -105,9 +110,26 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 	}
 
+	// Backward compatibility: map legacy fields if new ones are empty
+	if len(qm.MessagePaths) == 0 && strings.TrimSpace(qm.Topics) != "" {
+		parts := strings.Split(qm.Topics, ",")
+		for _, p := range parts {
+			pt := strings.TrimSpace(p)
+			if pt != "" {
+				qm.MessagePaths = append(qm.MessagePaths, pt)
+			}
+		}
+	}
+	if len(qm.DeviceNames) == 0 && strings.TrimSpace(qm.DeviceName) != "" {
+		qm.DeviceNames = []string{strings.TrimSpace(qm.DeviceName)}
+	}
+	if qm.Metadata == nil {
+		qm.Metadata = map[string]string{}
+	}
+
 	// Validate required fields
-	if qm.DeviceName == "" {
-		return backend.ErrDataResponse(backend.StatusBadRequest, "deviceName is required")
+	if len(qm.MessagePaths) == 0 {
+		return backend.ErrDataResponse(backend.StatusBadRequest, "messagePaths is required and must be non-empty")
 	}
 
 	// Use provided start/end times or fall back to query time range
@@ -148,27 +170,18 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 
 // fetchFoxgloveStream calls the Foxglove API /data/stream endpoint
 func (d *Datasource) fetchFoxgloveStream(ctx context.Context, config *models.PluginSettings, qm queryModel, startTime, endTime string) ([]byte, error) {
-	// Build request payload according to Foxglove API specification
+	// Build request payload for new model
 	// See: https://docs.foxglove.dev/api#tag/Stream-data
 	payload := map[string]interface{}{
-		"deviceName": qm.DeviceName,
-		"start":      startTime,
-		"end":        endTime,
+		"messagePaths": qm.MessagePaths,
+		"start":        startTime,
+		"end":          endTime,
 	}
-
-	// Parse comma-separated topics into array
-	if qm.Topics != "" {
-		parts := strings.Split(qm.Topics, ",")
-		topics := make([]string, 0, len(parts))
-		for _, part := range parts {
-			trimmed := strings.TrimSpace(part)
-			if trimmed != "" {
-				topics = append(topics, trimmed)
-			}
-		}
-		if len(topics) > 0 {
-			payload["topics"] = topics
-		}
+	if len(qm.DeviceNames) > 0 {
+		payload["deviceNames"] = qm.DeviceNames
+	}
+	if len(qm.Metadata) > 0 {
+		payload["metadata"] = qm.Metadata
 	}
 
 	jsonPayload, err := json.Marshal(payload)
