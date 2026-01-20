@@ -3,22 +3,18 @@ import { DataQuery } from '@grafana/schema';
 
 export interface MyQuery extends DataQuery {
   // New query model
-  messagePaths?: string[];
+  messagePath?: string;
   deviceNames?: string[];
   metadata?: Record<string, string>;
-  start?: string; // RFC3339
-  end?: string; // RFC3339
   // Legacy fields (kept for migration/back-compat in UI)
   deviceName?: string;
   topics?: string; // Comma-separated
 }
 
 export const DEFAULT_QUERY: Partial<MyQuery> = {
-  messagePaths: [],
+  messagePath: '',
   deviceNames: [],
   metadata: {},
-  start: '',
-  end: '',
 };
 
 export interface DataPoint {

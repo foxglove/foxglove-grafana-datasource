@@ -62,11 +62,9 @@ func getAPIBaseURL(config *models.PluginSettings) string {
 
 type queryModel struct {
 	// New model
-	MessagePaths []string          `json:"messagePaths"`
-	DeviceNames  []string          `json:"deviceNames"`
-	Metadata     map[string]string `json:"metadata"`
-	Start        string            `json:"start"` // RFC3339 format
-	End          string            `json:"end"`   // RFC3339 format
+	MessagePath string            `json:"messagePath"`
+	DeviceNames []string          `json:"deviceNames"`
+	Metadata    map[string]string `json:"metadata"`
 	// Legacy fields (for backward compatibility and migration)
 	DeviceName string `json:"deviceName"`
 	Topics     string `json:"topics"` // Comma-separated list of topics
@@ -111,12 +109,13 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 	}
 
 	// Backward compatibility: map legacy fields if new ones are empty
-	if len(qm.MessagePaths) == 0 && strings.TrimSpace(qm.Topics) != "" {
+	if strings.TrimSpace(qm.MessagePath) == "" && strings.TrimSpace(qm.Topics) != "" {
 		parts := strings.Split(qm.Topics, ",")
 		for _, p := range parts {
 			pt := strings.TrimSpace(p)
 			if pt != "" {
-				qm.MessagePaths = append(qm.MessagePaths, pt)
+				qm.MessagePath = pt
+				break
 			}
 		}
 	}
@@ -128,19 +127,13 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 	}
 
 	// Validate required fields
-	if len(qm.MessagePaths) == 0 {
-		return backend.ErrDataResponse(backend.StatusBadRequest, "messagePaths is required and must be non-empty")
+	if strings.TrimSpace(qm.MessagePath) == "" {
+		return backend.ErrDataResponse(backend.StatusBadRequest, "messagePath is required")
 	}
 
-	// Use provided start/end times or fall back to query time range
-	startTime := qm.Start
-	endTime := qm.End
-	if startTime == "" {
-		startTime = query.TimeRange.From.Format(time.RFC3339)
-	}
-	if endTime == "" {
-		endTime = query.TimeRange.To.Format(time.RFC3339)
-	}
+	// Use the panel time range as canonical
+	startTime := query.TimeRange.From.Format(time.RFC3339)
+	endTime := query.TimeRange.To.Format(time.RFC3339)
 
 	// Load settings to get API key
 	config, err := models.LoadPluginSettings(*pCtx.DataSourceInstanceSettings)
@@ -173,7 +166,7 @@ func (d *Datasource) fetchFoxgloveStream(ctx context.Context, config *models.Plu
 	// Build request payload for new model
 	// See: https://docs.foxglove.dev/api#tag/Stream-data
 	payload := map[string]interface{}{
-		"messagePaths": qm.MessagePaths,
+		"messagePaths": []string{qm.MessagePath},
 		"start":        startTime,
 		"end":          endTime,
 	}

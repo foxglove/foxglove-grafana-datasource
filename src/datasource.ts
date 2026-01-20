@@ -28,11 +28,9 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
     return {
       ...query,
       // New model
-      messagePaths: replaceArray(query.messagePaths),
+      messagePath: tpl.replace(query.messagePath || '', scopedVars),
       deviceNames: replaceArray(query.deviceNames),
       metadata: replaceRecord(query.metadata),
-      start: tpl.replace(query.start || '', scopedVars),
-      end: tpl.replace(query.end || '', scopedVars),
       // Legacy fields (kept for migration/back-compat)
       deviceName: tpl.replace(query.deviceName || '', scopedVars),
       topics: tpl.replace(query.topics || '', scopedVars),
@@ -40,7 +38,7 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   }
 
   filterQuery(query: MyQuery): boolean {
-    // Require at least one message path
-    return Array.isArray(query.messagePaths) && query.messagePaths.length > 0;
+    // Require non-empty messagePath
+    return typeof query.messagePath === 'string' && query.messagePath.trim().length > 0;
   }
 }

@@ -1,104 +1,126 @@
-import React, { ChangeEvent } from 'react';
-import { InlineField, Input, Stack, DateTimePicker } from '@grafana/ui';
-import { QueryEditorProps, dateTime, DateTime } from '@grafana/data';
+import React, { ChangeEvent, useEffect, useState } from 'react';
+import { InlineField, Input, Stack, Button } from '@grafana/ui';
+import { QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
 import { MyDataSourceOptions, MyQuery } from '../types';
 
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
 
-export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
-  const onStartTimeChange = (value?: DateTime) => {
-    // Convert to RFC3339 format (ISO 8601)
-    const rfc3339 = value ? value.toISOString() : '';
-    onChange({ ...query, start: rfc3339 });
+export function QueryEditor({ query, onChange, onRunQuery }: Props) {
+  const updateMessagePath = (value: string) => {
+    onChange({ ...query, messagePath: value });
+    onRunQuery();
   };
 
-  const onEndTimeChange = (value?: DateTime) => {
-    // Convert to RFC3339 format (ISO 8601)
-    const rfc3339 = value ? value.toISOString() : '';
-    onChange({ ...query, end: rfc3339 });
+  const updateDeviceName = (idx: number, value: string) => {
+    const devices = [...(query.deviceNames ?? [])];
+    devices[idx] = value;
+    onChange({ ...query, deviceNames: devices });
+  };
+  const addDeviceName = () => {
+    const devices = [...(query.deviceNames ?? []), ''];
+    onChange({ ...query, deviceNames: devices });
+  };
+  const removeDeviceName = (idx: number) => {
+    const devices = [...(query.deviceNames ?? [])];
+    devices.splice(idx, 1);
+    onChange({ ...query, deviceNames: devices });
   };
 
-  const onMessagePathsChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const raw = event.target.value || '';
-    const arr = raw.split(',').map((s) => s.trim()).filter(Boolean);
-    onChange({ ...query, messagePaths: arr });
-  };
-
-  const onDeviceNamesChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const raw = event.target.value || '';
-    const arr = raw.split(',').map((s) => s.trim()).filter(Boolean);
-    onChange({ ...query, deviceNames: arr });
-  };
-
-  const onMetadataChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const raw = event.target.value || '';
+  // Local UI state for metadata rows so we can render empty rows before keys are set
+  type MetadataRow = { key: string; value: string };
+  const [metadataRows, setMetadataRows] = useState<MetadataRow[]>(
+    () => Object.entries(query.metadata ?? {}).map(([key, value]) => ({ key, value }))
+  );
+  useEffect(() => {
+    setMetadataRows(Object.entries(query.metadata ?? {}).map(([key, value]) => ({ key, value })));
+  }, [query.metadata]);
+  const applyMetadataRowsToQuery = (entries: MetadataRow[]) => {
     const rec: Record<string, string> = {};
-    raw.split(',').map((pair) => pair.trim()).filter(Boolean).forEach((pair) => {
-      const idx = pair.indexOf('=');
-      if (idx > 0) {
-        const key = pair.slice(0, idx).trim();
-        const value = pair.slice(idx + 1).trim();
-        if (key) {
-          rec[key] = value;
-        }
+    for (const row of entries) {
+      if (row.key) {
+        rec[row.key] = row.value ?? '';
       }
-    });
+    }
     onChange({ ...query, metadata: rec });
   };
-
-  // Parse existing RFC3339 strings back to dateTime objects for the picker
-  const startTime: DateTime | null = query.start ? dateTime(query.start) : null;
-  const endTime: DateTime | null = query.end ? dateTime(query.end) : null;
-
-  const messagePathsDisplay = (query.messagePaths ?? []).join(', ');
-  const deviceNamesDisplay = (query.deviceNames ?? []).join(', ');
-  const metadataDisplay = Object.entries(query.metadata ?? {})
-    .map(([k, v]) => `${k}=${v}`)
-    .join(', ');
+  const updateMetadataKey = (idx: number, key: string) => {
+    const entries = metadataRows.map((r, i) => (i === idx ? { key, value: r.value } : r));
+    setMetadataRows(entries);
+    applyMetadataRowsToQuery(entries);
+  };
+  const updateMetadataValue = (idx: number, value: string) => {
+    const entries = metadataRows.map((r, i) => (i === idx ? { key: r.key, value } : r));
+    setMetadataRows(entries);
+    applyMetadataRowsToQuery(entries);
+  };
+  const addMetadata = () => {
+    const entries = [...metadataRows, { key: '', value: '' }];
+    setMetadataRows(entries);
+    // Do not apply to query until a non-empty key exists
+  };
+  const removeMetadata = (idx: number) => {
+    const entries = metadataRows.filter((_, i) => i !== idx);
+    setMetadataRows(entries);
+    applyMetadataRowsToQuery(entries);
+  };
 
   return (
     <Stack gap={2} direction="column">
-      <InlineField label="Message Paths" labelWidth={14} required tooltip="Comma-separated list of message paths to read" grow>
+      <InlineField label="Message Path" labelWidth={21} required tooltip="Message path to read" grow>
         <Input
-          id="query-editor-message-paths"
-          onChange={onMessagePathsChange}
-          value={messagePathsDisplay}
-          placeholder="/topic.field, /other"
+          id="query-editor-message-path"
+          onChange={(e: ChangeEvent<HTMLInputElement>) => updateMessagePath(e.target.value)}
+          value={query.messagePath ?? ''}
+          placeholder="/topic.field"
           width={40}
         />
       </InlineField>
-      <InlineField label="Start Time" labelWidth={14} tooltip="Start time. Leave empty to use dashboard time range." grow>
-        <DateTimePicker
-          date={startTime ?? range?.from}
-          onChange={onStartTimeChange}
-          showSeconds={true}
-        />
+      {/* Time range pickers removed; panel time range is canonical */}
+      <InlineField label="Device Names" labelWidth={21} tooltip="Optional device names to filter" grow>
+        <Stack direction="column" gap={1}>
+          {(query.deviceNames ?? []).map((d, idx) => (
+            <Stack key={`device-${idx}`} direction="row" gap={1}>
+              <Input
+                id={`query-editor-device-name-${idx}`}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => updateDeviceName(idx, e.target.value)}
+                value={d}
+                placeholder="deviceA"
+                width={40}
+              />
+              <Button variant="secondary" onClick={() => removeDeviceName(idx)}>
+                Remove
+              </Button>
+            </Stack>
+          ))}
+          <Button onClick={addDeviceName}>Add device</Button>
+        </Stack>
       </InlineField>
-      <InlineField label="End Time" labelWidth={14} tooltip="End time. Leave empty to use dashboard time range." grow>
-        <DateTimePicker
-          date={endTime ?? range?.to}
-          onChange={onEndTimeChange}
-          showSeconds={true}
-        />
-      </InlineField>
-      <InlineField label="Device Names" labelWidth={14} tooltip="Optional: comma-separated device names to filter" grow>
-        <Input
-          id="query-editor-device-names"
-          onChange={onDeviceNamesChange}
-          value={deviceNamesDisplay}
-          placeholder="deviceA, deviceB"
-          width={40}
-        />
-      </InlineField>
-      <InlineField label="Metadata" labelWidth={14} tooltip="Optional: comma-separated key=value pairs" grow>
-        <Input
-          id="query-editor-metadata"
-          onChange={onMetadataChange}
-          value={metadataDisplay}
-          placeholder="env=prod, site=abc"
-          width={40}
-        />
+      <InlineField label="Metadata" labelWidth={21} tooltip="Optional key/value filters" grow>
+        <Stack direction="column" gap={1}>
+          {metadataRows.map(({ key, value }, idx) => (
+            <Stack key={`meta-${idx}`} direction="row" gap={1}>
+              <Input
+                id={`query-editor-metadata-key-${idx}`}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => updateMetadataKey(idx, e.target.value)}
+                value={key}
+                placeholder="key"
+                width={20}
+              />
+              <Input
+                id={`query-editor-metadata-value-${idx}`}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => updateMetadataValue(idx, e.target.value)}
+                value={value}
+                placeholder="value"
+                width={20}
+              />
+              <Button variant="secondary" onClick={() => removeMetadata(idx)}>
+                Remove
+              </Button>
+            </Stack>
+          ))}
+          <Button onClick={addMetadata}>Add pair</Button>
+        </Stack>
       </InlineField>
     </Stack>
   );
