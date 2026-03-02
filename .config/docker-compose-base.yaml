@@ -1,7 +1,17 @@
 services:
+  foxglove-mock:
+    container_name: 'foxglove-mock'
+    image: node:22-alpine
+    working_dir: /app
+    command: ["node", "server.js"]
+    volumes:
+      - ./foxglove-mock:/app
+
   grafana:
     user: root
     container_name: 'foxglovedev-foxglove-datasource'
+    depends_on:
+      - foxglove-mock
 
     build:
       context: .
@@ -30,3 +40,5 @@ services:
       GF_DATAPROXY_LOGGING: 1
       GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: foxglovedev-foxglove-datasource
       GF_DEFAULT_APP_MODE: development
+      FOXGLOVE_API_BASE_URL: ${FOXGLOVE_API_BASE_URL:-}
+      FOXGLOVE_API_KEY: ${FOXGLOVE_API_KEY:-}
