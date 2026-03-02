@@ -1,5 +1,15 @@
 services:
+  foxglove-mock:
+    container_name: 'foxglove-mock'
+    image: node:22-alpine
+    working_dir: /app
+    command: ["node", "server.js"]
+    volumes:
+      - ./.config/foxglove-mock:/app
+
   grafana:
     extends:
       file: .config/docker-compose-base.yaml
       service: grafana
+    depends_on:
+      - foxglove-mock
