@@ -13,9 +13,8 @@ test('"Save & test" should be successful when configuration is valid', async ({
 }) => {
   const ds = await readProvisionedDataSource<MyDataSourceOptions, MySecureJsonData>({ fileName: 'datasources.yml' });
   const configPage = await createDataSourceConfigPage({ type: ds.type });
-  const baseUrl = ds.jsonData.baseUrl ?? '';
-  await page.getByRole('textbox', { name: 'API Base URL' }).fill(baseUrl);
-  await page.getByRole('textbox', { name: 'API Key' }).fill(ds.secureJsonData?.apiKey ?? '');
+  await page.getByRole('textbox', { name: 'API Base URL' }).fill(process.env.FOXGLOVE_API_BASE_URL ?? '');
+  await page.getByRole('textbox', { name: 'API Key' }).fill(process.env.FOXGLOVE_API_KEY ?? '');
   await expect(configPage.saveAndTest()).toBeOK();
 });
 
@@ -26,8 +25,7 @@ test('"Save & test" should fail when configuration is invalid', async ({
 }) => {
   const ds = await readProvisionedDataSource<MyDataSourceOptions, MySecureJsonData>({ fileName: 'datasources.yml' });
   const configPage = await createDataSourceConfigPage({ type: ds.type });
-  const baseUrl = ds.jsonData.baseUrl ?? '';
-  await page.getByRole('textbox', { name: 'API Base URL' }).fill(baseUrl);
+  await page.getByRole('textbox', { name: 'API Base URL' }).fill(process.env.FOXGLOVE_API_BASE_URL ?? '');
   await expect(configPage.saveAndTest()).not.toBeOK();
   await expect(configPage).toHaveAlert('error', { hasText: 'API key is missing' });
 });
