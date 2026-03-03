@@ -19,6 +19,7 @@ test('should trigger new query when Constant field is changed', async ({
 
 test('data query should return values 10 and 20', async ({ createDataSource, panelEditPage }) => {
   const ds = await createDataSource({
+    name: 'foxglove-e2e-test',
     type: 'foxglovedev-foxglove-datasource',
     jsonData: { baseUrl: process.env.FOXGLOVE_API_BASE_URL ?? '' },
     secureJsonData: { apiKey: process.env.FOXGLOVE_API_KEY ?? '' },
