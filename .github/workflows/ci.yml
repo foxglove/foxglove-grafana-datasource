@@ -156,9 +156,8 @@ jobs:
     name: e2e test ${{ matrix.GRAFANA_IMAGE.name }}@${{ matrix.GRAFANA_IMAGE.VERSION }}
     runs-on: ubuntu-latest
     env:
-      FOXGLOVE_E2E_USE_REAL_API: ${{ vars.FOXGLOVE_E2E_USE_REAL_API || 'false' }}
-      FOXGLOVE_API_KEY: ${{ (vars.FOXGLOVE_E2E_USE_REAL_API == 'true' && secrets.FOXGLOVE_API_KEY) || 'ci' }}
-      FOXGLOVE_API_BASE_URL: ${{ (vars.FOXGLOVE_E2E_USE_REAL_API == 'true' && (vars.FOXGLOVE_API_BASE_URL || secrets.FOXGLOVE_API_BASE_URL)) || 'http://foxglove-mock:8080' }}
+      FOXGLOVE_API_BASE_URL: ${{ vars.FOXGLOVE_API_BASE_URL }}
+      FOXGLOVE_API_KEY: ${{ secrets.FOXGLOVE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
