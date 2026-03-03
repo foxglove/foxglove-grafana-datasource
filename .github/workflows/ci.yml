@@ -155,6 +155,9 @@ jobs:
         GRAFANA_IMAGE: ${{fromJson(needs.resolve-versions.outputs.matrix)}}
     name: e2e test ${{ matrix.GRAFANA_IMAGE.name }}@${{ matrix.GRAFANA_IMAGE.VERSION }}
     runs-on: ubuntu-latest
+    env:
+      FOXGLOVE_API_BASE_URL: ${{ secrets.FOXGLOVE_API_BASE_URL }}
+      FOXGLOVE_API_KEY: ${{ secrets.FOXGLOVE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
