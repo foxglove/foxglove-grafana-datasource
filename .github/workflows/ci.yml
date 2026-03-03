@@ -212,6 +212,10 @@ jobs:
         if: ${{ always() && steps.run-tests.outcome == 'failure' }}
         run: |
           docker logs foxglovedev-foxglove-datasource >& grafana-server.log
+          echo "=== Query errors ==="
+          grep -E "status=400|status=500" grafana-server.log | tail -5
+          echo "=== Plugin query details ==="
+          grep -iE "query_data|foxglovedev" grafana-server.log | tail -10
 
       - name: Stop grafana docker
         run: docker compose down
