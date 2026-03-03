@@ -193,6 +193,14 @@ jobs:
         with:
           url: http://localhost:3000/login
 
+      - name: Verify container environment
+        run: |
+          echo "=== Container FOXGLOVE env vars ==="
+          docker exec foxglovedev-foxglove-datasource env | grep FOXGLOVE || echo "No FOXGLOVE env vars found in container"
+          echo "=== Grafana provisioning log ==="
+          docker exec foxglovedev-foxglove-datasource grep -i "provisioning\|foxglove\|datasource" /var/log/grafana/grafana.log 2>/dev/null || echo "No provisioning log found at default location"
+          docker logs foxglovedev-foxglove-datasource 2>&1 | grep -i "provisioning\|foxglove\|datasource" | head -20 || echo "No relevant lines in container logs"
+
       - name: Install Playwright Browsers
         run: npm exec playwright install chromium --with-deps
 
