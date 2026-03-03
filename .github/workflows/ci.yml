@@ -193,15 +193,6 @@ jobs:
         with:
           url: http://localhost:3000/login
 
-      - name: Verify container environment
-        run: |
-          echo "=== Container FOXGLOVE env vars ==="
-          docker exec foxglovedev-foxglove-datasource env | grep FOXGLOVE || echo "No FOXGLOVE env vars found in container"
-          echo "=== Grafana provisioned datasource config ==="
-          docker exec foxglovedev-foxglove-datasource cat /etc/grafana/provisioning/datasources/datasources.yml || echo "Provisioning file not found"
-          echo "=== Grafana datasource provisioning logs ==="
-          docker logs foxglovedev-foxglove-datasource 2>&1 | grep -iE "inserting datasource|updating datasource|reading datasource|data source|foxglovedev" | head -10 || echo "No datasource logs found"
-
       - name: Install Playwright Browsers
         run: npm exec playwright install chromium --with-deps
 
@@ -221,8 +212,6 @@ jobs:
         if: ${{ always() && steps.run-tests.outcome == 'failure' }}
         run: |
           docker logs foxglovedev-foxglove-datasource >& grafana-server.log
-          echo "=== Plugin errors from Grafana server logs ==="
-          grep -iE "error|warn|foxglovedev|api.*key|health|query|stream|400|401|404|failed" grafana-server.log | tail -30 || echo "No relevant log lines found"
 
       - name: Stop grafana docker
         run: docker compose down
