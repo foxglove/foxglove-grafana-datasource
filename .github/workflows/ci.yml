@@ -197,12 +197,10 @@ jobs:
         run: |
           echo "=== Container FOXGLOVE env vars ==="
           docker exec foxglovedev-foxglove-datasource env | grep FOXGLOVE || echo "No FOXGLOVE env vars found in container"
-          echo "=== Provisioned datasources ==="
-          curl -s -u admin:admin http://localhost:3000/api/datasources | python3 -c "import sys,json; ds=json.load(sys.stdin); [print(f'  {d[\"name\"]}: type={d[\"type\"]}, url={d.get(\"url\",\"\")}') for d in ds]" || echo "Failed to list datasources"
-          echo "=== Health check on provisioned datasource ==="
-          DS_ID=$(curl -s -u admin:admin http://localhost:3000/api/datasources | python3 -c "import sys,json; ds=json.load(sys.stdin); print(ds[0]['uid'] if ds else 'none')")
-          echo "Datasource UID: $DS_ID"
-          curl -s -u admin:admin "http://localhost:3000/api/datasources/uid/$DS_ID/health" | python3 -c "import sys,json; r=json.load(sys.stdin); print(f'  Status: {r.get(\"status\",\"?\")}, Message: {r.get(\"message\",\"?\")}')" || echo "Health check failed"
+          echo "=== Grafana provisioned datasource config ==="
+          docker exec foxglovedev-foxglove-datasource cat /etc/grafana/provisioning/datasources/datasources.yml || echo "Provisioning file not found"
+          echo "=== Grafana datasource provisioning logs ==="
+          docker logs foxglovedev-foxglove-datasource 2>&1 | grep -iE "inserting datasource|updating datasource|reading datasource|data source|foxglovedev" | head -10 || echo "No datasource logs found"
 
       - name: Install Playwright Browsers
         run: npm exec playwright install chromium --with-deps
