@@ -30,3 +30,5 @@ services:
       GF_DATAPROXY_LOGGING: 1
       GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: foxglovedev-foxglove-datasource
       GF_DEFAULT_APP_MODE: development
+      FOXGLOVE_API_BASE_URL: ${FOXGLOVE_API_BASE_URL:-}
+      FOXGLOVE_API_KEY: ${FOXGLOVE_API_KEY:-}
