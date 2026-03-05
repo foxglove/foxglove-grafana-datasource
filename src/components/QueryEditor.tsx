@@ -36,12 +36,12 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
 
   return (
     <Stack gap={2} direction="column">
-      <InlineField label="Device Name" labelWidth={14} required tooltip="The Foxglove device name to query" grow>
+      <InlineField label="Device Name" labelWidth={14} required tooltip="Foxglove device name(s). Supports Grafana template variables (e.g. $device). Multi-value variables or comma-separated names will query each device separately." grow>
         <Input
           id="query-editor-device-name"
           onChange={onDeviceNameChange}
           value={deviceName || ''}
-          placeholder="Enter device name"
+          placeholder="device-1 or $device"
           width={30}
         />
       </InlineField>

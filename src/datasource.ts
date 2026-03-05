@@ -15,8 +15,10 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   applyTemplateVariables(query: MyQuery, scopedVars: ScopedVars) {
     return {
       ...query,
-      deviceName: getTemplateSrv().replace(query.deviceName || '', scopedVars),
-      topics: getTemplateSrv().replace(query.topics || '', scopedVars),
+      // Use 'csv' format so multi-value variables resolve to "dev1,dev2,dev3"
+      // which the backend splits and queries individually.
+      deviceName: getTemplateSrv().replace(query.deviceName || '', scopedVars, 'csv'),
+      topics: getTemplateSrv().replace(query.topics || '', scopedVars, 'csv'),
       start: getTemplateSrv().replace(query.start || '', scopedVars),
       end: getTemplateSrv().replace(query.end || '', scopedVars),
     };

@@ -94,6 +94,21 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	return response, nil
 }
 
+// parseDeviceNames splits a potentially comma-separated deviceName string into
+// individual trimmed device names, filtering out empty entries. This supports
+// Grafana multi-value template variables which resolve to "dev1,dev2,dev3".
+func parseDeviceNames(raw string) []string {
+	parts := strings.Split(raw, ",")
+	names := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			names = append(names, trimmed)
+		}
+	}
+	return names
+}
+
 func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
 	var response backend.DataResponse
 
@@ -130,19 +145,49 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 		return backend.ErrDataResponse(backend.StatusBadRequest, "API key is not configured")
 	}
 
-	// Call Foxglove API
-	responseData, err := d.fetchFoxgloveStream(ctx, config, qm, startTime, endTime)
-	if err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to fetch data: %v", err))
+	// Support multiple devices (comma-separated, e.g. from a Grafana multi-value variable).
+	// Each device gets its own API call and its frames are labeled with the device name.
+	deviceNames := parseDeviceNames(qm.DeviceName)
+	if len(deviceNames) == 0 {
+		return backend.ErrDataResponse(backend.StatusBadRequest, "deviceName is required")
 	}
 
-	// Convert to data frames
-	frames, err := d.convertToDataFrames(responseData, qm)
-	if err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to convert data: %v", err))
+	var allFrames data.Frames
+	for _, device := range deviceNames {
+		// Build a per-device query model
+		perDeviceQM := qm
+		perDeviceQM.DeviceName = device
+
+		// Call Foxglove API for this device
+		responseData, err := d.fetchFoxgloveStream(ctx, config, perDeviceQM, startTime, endTime)
+		if err != nil {
+			return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to fetch data for device %q: %v", device, err))
+		}
+
+		// Convert to data frames
+		frames, err := d.convertToDataFrames(responseData, perDeviceQM)
+		if err != nil {
+			return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to convert data for device %q: %v", device, err))
+		}
+
+		// Label each frame with the device name so Grafana can distinguish them
+		for _, frame := range frames {
+			if frame.Meta == nil {
+				frame.Meta = &data.FrameMeta{}
+			}
+			frame.Name = fmt.Sprintf("%s - %s", frame.Name, device)
+			for _, field := range frame.Fields {
+				if field.Labels == nil {
+					field.Labels = data.Labels{}
+				}
+				field.Labels["device"] = device
+			}
+		}
+
+		allFrames = append(allFrames, frames...)
 	}
 
-	response.Frames = frames
+	response.Frames = allFrames
 	return response
 }
 
