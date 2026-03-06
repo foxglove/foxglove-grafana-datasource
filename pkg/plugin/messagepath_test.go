@@ -292,9 +292,13 @@ func TestParseMessagePath(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "missing leading slash",
-			input:   "my_topic.field",
-			wantErr: true,
+			name:  "missing leading slash",
+			input: "my_topic.field",
+			topic: "my_topic",
+			selectors: []Selector{
+				{Kind: SelectorKindField, Field: "field"},
+			},
+			wantErr: false,
 		},
 		{
 			name:    "only slash",

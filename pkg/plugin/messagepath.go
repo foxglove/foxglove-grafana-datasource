@@ -149,10 +149,6 @@ func (p *parser) parseTopic() (string, error) {
 		return "", fmt.Errorf("empty message path")
 	}
 
-	ch, _ := p.peek()
-	if ch != '/' {
-		return "", fmt.Errorf("message path must start with '/', got '%c'", ch)
-	}
 	start := p.pos
 	p.advance() // consume leading '/'
 
