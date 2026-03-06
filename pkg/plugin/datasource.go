@@ -403,7 +403,7 @@ func (d *Datasource) convertToDataFrames(
 		// Only ros1msg encoding is supported.
 		if channel.MessageEncoding != "ros1" {
 			return fmt.Errorf(
-				"unsupported message encoding %q on channel topic %q (message path %q); only ros1 is supported",
+				"received unexpected message encoding %q on channel topic %q (message path %q); message path field selection failed",
 				channel.MessageEncoding, syntheticKey, originalPath,
 			)
 		}
@@ -437,7 +437,12 @@ func (d *Datasource) convertToDataFrames(
 		for fieldName, raw := range obj {
 			arr, isArray := raw.([]interface{})
 			if !isArray {
-				return fmt.Errorf("field %q value is not an array for path %q (got %T: %v)", fieldName, originalPath, raw, raw)
+				v, isFloat := raw.(float64)
+				if !isFloat {
+					return fmt.Errorf("field %q value is not an float64 for path %q (got %T: %v)", fieldName, originalPath, raw, raw)
+				}
+				val = v
+				continue
 			}
 			first := arr[0]
 			v, isFloat := first.(float64)
