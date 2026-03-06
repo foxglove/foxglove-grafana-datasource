@@ -6,8 +6,7 @@ Initial release.
 
 To use this plugin, you need a Foxglove API key.
 
-Log into https://app.foxglove.dev, navigate to Settings > API keys, and create an API key with
-at least these capabilities:
+Navigate to https://app.foxglove.dev/~/settings/apikeys and create an API key with at least these capabilities:
 
 - recordings.list
 - data.stream
@@ -19,8 +18,10 @@ at least these capabilities:
 
 Then, once the plugin is installed, configure the data source with
 
-API Base URL: https://api.foxglove.dev
-API Key: (your API key)
+| Name         | Value                    |
+| ------------ | ------------------------ |
+| API Base URL | https://api.foxglove.dev |
+| API Key      | (your API key)           |
 
 You can then query Foxglove using comma-separated lists of device names and [message path](https://docs.foxglove.dev/docs/visualization/message-path-syntax) values.
 
