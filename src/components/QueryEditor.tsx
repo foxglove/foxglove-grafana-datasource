@@ -7,12 +7,12 @@ import { MyDataSourceOptions, MyQuery } from '../types';
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
 
 export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
-  const onDeviceNameChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const onDeviceNamesChange = (event: ChangeEvent<HTMLInputElement>) => {
     onChange({ ...query, deviceName: event.target.value });
     onRunQuery();
   };
 
-  const onTopicsChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const onMessagePathsChange = (event: ChangeEvent<HTMLInputElement>) => {
     onChange({ ...query, topics: event.target.value });
   };
 
@@ -36,12 +36,12 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
 
   return (
     <Stack gap={2} direction="column">
-      <InlineField label="Device Name" labelWidth={14} required tooltip="The Foxglove device name to query" grow>
+      <InlineField label="Device Names" labelWidth={14} required tooltip="Foxglove device name(s). Supports Grafana template variables (e.g. $device). Multi-value variables or comma-separated names will query each device separately." grow>
         <Input
           id="query-editor-device-name"
-          onChange={onDeviceNameChange}
+          onChange={onDeviceNamesChange}
           value={deviceName || ''}
-          placeholder="Enter device name"
+          placeholder="device-1 or $device"
           width={30}
         />
       </InlineField>
@@ -59,10 +59,10 @@ export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
           showSeconds={true}
         />
       </InlineField>
-      <InlineField label="Topics" labelWidth={14} tooltip="Comma-separated list of topics (optional)" grow>
+      <InlineField label="Message Paths" labelWidth={14} tooltip="Comma-separated list of message paths to floating-point fields. See https://docs.foxglove.dev/docs/visualization/message-path-syntax" grow>
         <Input
           id="query-editor-topics"
-          onChange={onTopicsChange}
+          onChange={onMessagePathsChange}
           value={topics || ''}
           placeholder="topic1, topic2, topic3"
           width={30}

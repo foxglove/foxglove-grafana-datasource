@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/foxglove-dev/foxglove/pkg/models"
+	"github.com/foxglove/go-rosbag/ros1msg"
+	"github.com/foxglove/mcap/go/mcap"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
@@ -62,9 +65,66 @@ func getAPIBaseURL(config *models.PluginSettings) string {
 
 type queryModel struct {
 	DeviceName string `json:"deviceName"`
-	Topics     string `json:"topics"` // Comma-separated list of topics
+	Topics     string `json:"topics"` // Comma-separated list of message path strings (e.g. "/imu.linear_acceleration.x, /gps.latitude")
 	Start      string `json:"start"`  // Start time in RFC3339 format (e.g., "2019-08-24T14:15:22Z")
 	End        string `json:"end"`    // End time in RFC3339 format (e.g., "2019-08-24T14:15:22Z")
+}
+
+// parseMessagePathStrings splits the comma-separated Topics string into unique,
+// trimmed, non-empty message path strings, preserving the order of first appearance.
+func parseMessagePathStrings(raw string) []string {
+	parts := strings.Split(raw, ",")
+	seen := make(map[string]bool)
+	var result []string
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" && !seen[trimmed] {
+			seen[trimmed] = true
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+// buildMessagePathSets parses each message path string and builds the
+// messagePathSets map (keyed by synthetic names "topic_0", "topic_1", ...),
+// a reverse map from synthetic key → original message path string, and the
+// deduplicated list of real topics for backward compatibility.
+func buildMessagePathSets(messagePaths []string) (
+	messagePathSets map[string]*MessagePathSet,
+	syntheticToOriginal map[string]string,
+	realTopics []string,
+	err error,
+) {
+	messagePathSets = make(map[string]*MessagePathSet, len(messagePaths))
+	syntheticToOriginal = make(map[string]string, len(messagePaths))
+	topicSeen := make(map[string]bool)
+
+	for i, mp := range messagePaths {
+		topic, selectors, parseErr := ParseMessagePath(mp)
+		if parseErr != nil {
+			return nil, nil, nil, fmt.Errorf("failed to parse message path %q: %w", mp, parseErr)
+		}
+
+		key := fmt.Sprintf("topic_%d", i)
+		messagePathSets[key] = &MessagePathSet{
+			Topic:         topic,
+			SelectorPaths: [][]Selector{selectors},
+		}
+		syntheticToOriginal[key] = mp
+
+		if !topicSeen[topic] {
+			topicSeen[topic] = true
+			realTopics = append(realTopics, topic)
+		}
+	}
+	return messagePathSets, syntheticToOriginal, realTopics, nil
+}
+
+// streamDataResponse is the response from POST /v1/data/stream.
+// See the "link" field in the OpenAPI spec (v1.yaml).
+type streamDataResponse struct {
+	Link string `json:"link"`
 }
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
@@ -94,6 +154,21 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	return response, nil
 }
 
+// parseDeviceNames splits a potentially comma-separated deviceName string into
+// individual trimmed device names, filtering out empty entries. This supports
+// Grafana multi-value template variables which resolve to "dev1,dev2,dev3".
+func parseDeviceNames(raw string) []string {
+	parts := strings.Split(raw, ",")
+	names := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			names = append(names, trimmed)
+		}
+	}
+	return names
+}
+
 func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
 	var response backend.DataResponse
 
@@ -108,6 +183,21 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 	// Validate required fields
 	if qm.DeviceName == "" {
 		return backend.ErrDataResponse(backend.StatusBadRequest, "deviceName is required")
+	}
+
+	// Parse and deduplicate message path strings from Topics.
+	// If no topics are provided, return an empty response.
+	messagePaths := parseMessagePathStrings(qm.Topics)
+	if len(messagePaths) == 0 {
+		return response
+	}
+
+	// Parse each message path and build the messagePathSets for the API,
+	// a reverse map from synthetic keys back to original strings, and the
+	// deduplicated list of real topics for backward compatibility.
+	messagePathSets, syntheticToOriginal, realTopics, err := buildMessagePathSets(messagePaths)
+	if err != nil {
+		return backend.ErrDataResponse(backend.StatusBadRequest, err.Error())
 	}
 
 	// Use provided start/end times or fall back to query time range
@@ -130,45 +220,60 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 		return backend.ErrDataResponse(backend.StatusBadRequest, "API key is not configured")
 	}
 
-	// Call Foxglove API
-	responseData, err := d.fetchFoxgloveStream(ctx, config, qm, startTime, endTime)
-	if err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to fetch data: %v", err))
+	// Support multiple devices (comma-separated, e.g. from a Grafana multi-value variable).
+	// Each device gets its own API call and its frames are labeled with the device name.
+	deviceNames := parseDeviceNames(qm.DeviceName)
+	if len(deviceNames) == 0 {
+		return backend.ErrDataResponse(backend.StatusBadRequest, "deviceName is required")
 	}
 
-	// Convert to data frames
-	frames, err := d.convertToDataFrames(responseData, qm)
-	if err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to convert data: %v", err))
+	var allFrames data.Frames
+	for _, device := range deviceNames {
+		// Call Foxglove API for this device and get a streaming reader for the MCAP data
+		mcapBody, err := d.fetchFoxgloveStream(ctx, config, device, startTime, endTime, messagePathSets, realTopics)
+		if err != nil {
+			return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to fetch data for device %q: %v", device, err))
+		}
+		defer mcapBody.Close()
+
+		// Convert the MCAP stream into per-message-path data frames.
+		frames, err := d.convertToDataFrames(mcapBody, syntheticToOriginal, device)
+		if err != nil {
+			return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to convert data for device %q: %v", device, err))
+		}
+
+		allFrames = append(allFrames, frames...)
 	}
 
-	response.Frames = frames
+	response.Frames = allFrames
 	return response
 }
 
-// fetchFoxgloveStream calls the Foxglove API /data/stream endpoint
-func (d *Datasource) fetchFoxgloveStream(ctx context.Context, config *models.PluginSettings, qm queryModel, startTime, endTime string) ([]byte, error) {
+// fetchFoxgloveStream calls the Foxglove API /data/stream endpoint to obtain
+// a download link, then fetches the MCAP data from that link. The returned
+// io.ReadCloser streams the MCAP data and must be closed by the caller.
+func (d *Datasource) fetchFoxgloveStream(
+	ctx context.Context,
+	config *models.PluginSettings,
+	deviceName string,
+	startTime, endTime string,
+	messagePathSets map[string]*MessagePathSet,
+	realTopics []string,
+) (io.ReadCloser, error) {
 	// Build request payload according to Foxglove API specification
 	// See: https://docs.foxglove.dev/api#tag/Stream-data
 	payload := map[string]interface{}{
-		"deviceName": qm.DeviceName,
+		"deviceName": deviceName,
 		"start":      startTime,
 		"end":        endTime,
 	}
 
-	// Parse comma-separated topics into array
-	if qm.Topics != "" {
-		parts := strings.Split(qm.Topics, ",")
-		topics := make([]string, 0, len(parts))
-		for _, part := range parts {
-			trimmed := strings.TrimSpace(part)
-			if trimmed != "" {
-				topics = append(topics, trimmed)
-			}
-		}
-		if len(topics) > 0 {
-			payload["topics"] = topics
-		}
+	// Send messagePathSets for server-side message path extraction.
+	// Also include the real topics list for backward compatibility with
+	// servers that don't support messagePathSets.
+	if len(messagePathSets) > 0 {
+		payload["messagePathSets"] = messagePathSets
+		payload["topics"] = realTopics
 	}
 
 	jsonPayload, err := json.Marshal(payload)
@@ -210,118 +315,185 @@ func (d *Datasource) fetchFoxgloveStream(ctx context.Context, config *models.Plu
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Parse the response to extract the download URL
-	var downloadResponse map[string]interface{}
+	var downloadResponse streamDataResponse
 	if err := json.Unmarshal(body, &downloadResponse); err != nil {
 		return nil, fmt.Errorf("failed to parse download response: %w", err)
 	}
 
-	// Extract the URL from the response (could be "url", "downloadUrl", "link", etc.)
-	downloadURL, ok := downloadResponse["url"].(string)
-	if !ok {
-		// Try alternative field names
-		if url, ok := downloadResponse["downloadUrl"].(string); ok {
-			downloadURL = url
-		} else if url, ok := downloadResponse["link"].(string); ok {
-			downloadURL = url
-		} else {
-			// If no URL field found, return the raw response for debugging
-			return nil, fmt.Errorf("no download URL found in response: %s", string(body))
-		}
-	}
-
+	downloadURL := downloadResponse.Link
 	if downloadURL == "" {
-		return nil, fmt.Errorf("empty download URL in response: %s", string(body))
+		return nil, fmt.Errorf("no download link in response: %s", string(body))
 	}
 
-	// Make GET request to download the actual data file
-	return d.downloadFile(ctx, downloadURL)
-}
-
-// downloadFile makes a GET request to download the file from the provided URL
-func (d *Datasource) downloadFile(ctx context.Context, fileURL string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", fileURL, nil)
+	// GET the actual MCAP data from the download URL
+	dlReq, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create download request: %w", err)
 	}
 
-	// Make request (no auth needed for pre-signed URLs typically)
-	client := &http.Client{
-		Timeout: 60 * time.Second, // Longer timeout for file downloads
-	}
-	resp, err := client.Do(req)
+	dlResp, err := client.Do(dlReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to download file: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("download returned status %d for URL %s: %s", resp.StatusCode, fileURL, string(body))
+		return nil, fmt.Errorf("failed to download MCAP data: %w", err)
 	}
 
-	// Read the file content
-	fileData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file content: %w", err)
+	if dlResp.StatusCode != http.StatusOK {
+		dlBody, _ := io.ReadAll(dlResp.Body)
+		dlResp.Body.Close()
+		return nil, fmt.Errorf("download returned status %d: %s", dlResp.StatusCode, string(dlBody))
 	}
 
-	return fileData, nil
+	return dlResp.Body, nil
 }
 
-// convertToDataFrames converts Foxglove API response to Grafana data frames
-func (d *Datasource) convertToDataFrames(responseData []byte, qm queryModel) (data.Frames, error) {
-	// Parse the JSON response from Foxglove
-	// The exact structure depends on the Foxglove API response format
-	// This is a placeholder implementation - you'll need to adjust based on actual API response
+// frameAccumulator collects time-series data for a single message path.
+type frameAccumulator struct {
+	times  []time.Time
+	values []float64
+}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(responseData, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+// convertToDataFrames performs a streaming MCAP decode from the given reader.
+// Each message's channel topic is expected to be a synthetic key (e.g. "topic_0")
+// that maps back to the original message path string via syntheticToOriginal.
+// Messages on channels whose topic is not a recognized synthetic key indicate
+// an unsupported message path and cause an error.
+//
+// Returns one data frame per original message path string, named
+// "{deviceName}_{message path string}".
+func (d *Datasource) convertToDataFrames(
+	body io.Reader,
+	syntheticToOriginal map[string]string,
+	deviceName string,
+) (data.Frames, error) {
+	reader, err := mcap.NewReader(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create MCAP reader: %w", err)
+	}
+	defer reader.Close()
+
+	// The response body is not seekable, so we must disable index-based reading.
+	iter, err := reader.Messages(mcap.UsingIndex(false))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create message iterator: %w", err)
 	}
 
-	// Create a frame for the data
-	frame := data.NewFrame("foxglove_data")
+	// Cache JSON transcoders by schema ID so we build each one only once.
+	transcoders := make(map[uint16]*ros1msg.JSONTranscoder)
 
-	// Extract time and value fields from the response
-	// This is a simplified example - adjust based on actual Foxglove response structure
-	times := []time.Time{}
-	values := []float64{}
+	// One accumulator per synthetic key.
+	accumulators := make(map[string]*frameAccumulator, len(syntheticToOriginal))
+	for key := range syntheticToOriginal {
+		accumulators[key] = &frameAccumulator{}
+	}
 
-	// Try to extract data points from the response
-	if messages, ok := result["messages"].([]interface{}); ok {
-		for _, msg := range messages {
-			if msgMap, ok := msg.(map[string]interface{}); ok {
-				// Extract timestamp (adjust field names based on actual API)
-				if timestamp, ok := msgMap["timestamp"].(float64); ok {
-					times = append(times, time.Unix(0, int64(timestamp*1e9)))
-				}
+	err = mcap.Range(iter, func(schema *mcap.Schema, channel *mcap.Channel, message *mcap.Message) error {
+		syntheticKey := channel.Topic
 
-				// Extract value (adjust based on actual message structure)
-				if value, ok := msgMap["value"].(float64); ok {
-					values = append(values, value)
-				}
-			}
+		// If the channel topic is not one of our synthetic keys, the server
+		// passed the message through unmodified — meaning the message path
+		// was not supported for this schema. Treat as an error.
+		originalPath, ok := syntheticToOriginal[syntheticKey]
+		if !ok {
+			return fmt.Errorf(
+				"received message on unexpected channel topic %q; "+
+					"the message path may not be supported for the schema on this topic",
+				channel.Topic,
+			)
 		}
+
+		// Only ros1msg encoding is supported.
+		if channel.MessageEncoding != "ros1" {
+			return fmt.Errorf(
+				"unsupported message encoding %q on channel topic %q (message path %q); only ros1 is supported",
+				channel.MessageEncoding, syntheticKey, originalPath,
+			)
+		}
+
+		// Get or create a transcoder for this schema.
+		tc, tcOK := transcoders[schema.ID]
+		if !tcOK {
+			tc, err = ros1msg.NewJSONTranscoder(schema.Name, schema.Data)
+			if err != nil {
+				return fmt.Errorf("failed to create JSON transcoder for schema %q: %w", schema.Name, err)
+			}
+			transcoders[schema.ID] = tc
+		}
+
+		// Transcode the ros1msg binary data to JSON.
+		var jsonBuf bytes.Buffer
+		if err := tc.Transcode(&jsonBuf, bytes.NewReader(message.Data)); err != nil {
+			return fmt.Errorf("failed to transcode message to JSON (path %q): %w", originalPath, err)
+		}
+
+		// Parse the JSON object. We expect exactly one field (e.g. {"data_0": <value>}).
+		var obj map[string]interface{}
+		if err := json.Unmarshal(jsonBuf.Bytes(), &obj); err != nil {
+			return fmt.Errorf("failed to parse transcoded JSON (path %q): %w", originalPath, err)
+		}
+
+		if len(obj) != 1 {
+			return fmt.Errorf("expected exactly 1 field in message JSON for path %q, got %d: %v", originalPath, len(obj), obj)
+		}
+		var val float64
+		for fieldName, raw := range obj {
+			arr, isArray := raw.([]interface{})
+			if !isArray {
+				return fmt.Errorf("field %q value is not an array for path %q (got %T: %v)", fieldName, originalPath, raw, raw)
+			}
+			first := arr[0]
+			v, isFloat := first.(float64)
+			if !isFloat {
+				return fmt.Errorf("first element of array is not a float64 for path %q (got %T: %v)", originalPath, first, first)
+			}
+			val = v
+		}
+
+		ts := time.Unix(0, int64(message.LogTime))
+		acc := accumulators[syntheticKey]
+		acc.times = append(acc.times, ts)
+		acc.values = append(acc.values, val)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error reading MCAP messages: %w", err)
 	}
 
-	// If no data was extracted, create a simple frame with time range
-	if len(times) == 0 {
-		now := time.Now()
-		frame.Fields = append(frame.Fields,
-			data.NewField("time", nil, []time.Time{now.Add(-time.Hour), now}),
-			data.NewField("value", nil, []float64{0, 0}),
-		)
-		return data.Frames{frame}, nil
+	// Build one data frame per message path string, in synthetic-key order.
+	// Collect and sort keys so output order is deterministic (topic_0, topic_1, ...).
+	sortedKeys := make([]string, 0, len(syntheticToOriginal))
+	for key := range syntheticToOriginal {
+		sortedKeys = append(sortedKeys, key)
+	}
+	// topic_0, topic_1, ... sort lexicographically in the right order for
+	// small counts; use explicit sort for correctness.
+	sortStrings(sortedKeys)
+
+	var frames data.Frames
+	for _, key := range sortedKeys {
+		originalPath := syntheticToOriginal[key]
+		acc := accumulators[key]
+		frameName := fmt.Sprintf("%s_%s", deviceName, originalPath)
+
+		frame := data.NewFrame(frameName)
+		if len(acc.times) == 0 {
+			frame.Fields = append(frame.Fields,
+				data.NewField("time", nil, []time.Time{}),
+				data.NewField("value", nil, []float64{}),
+			)
+		} else {
+			frame.Fields = append(frame.Fields,
+				data.NewField("time", nil, acc.times),
+				data.NewField("value", nil, acc.values),
+			)
+		}
+		frames = append(frames, frame)
 	}
 
-	// Add fields to frame
-	frame.Fields = append(frame.Fields,
-		data.NewField("time", nil, times),
-		data.NewField("value", nil, values),
-	)
+	return frames, nil
+}
 
-	return data.Frames{frame}, nil
+// sortStrings sorts a slice of strings in place.
+func sortStrings(s []string) {
+	sort.Strings(s)
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
