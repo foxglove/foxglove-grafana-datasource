@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/foxglove-dev/foxglove/pkg/models"
+	"github.com/foxglove/go-rosbag/ros1msg"
+	"github.com/foxglove/mcap/go/mcap"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
@@ -65,6 +67,12 @@ type queryModel struct {
 	Topics     string `json:"topics"` // Comma-separated list of topics
 	Start      string `json:"start"`  // Start time in RFC3339 format (e.g., "2019-08-24T14:15:22Z")
 	End        string `json:"end"`    // End time in RFC3339 format (e.g., "2019-08-24T14:15:22Z")
+}
+
+// streamDataResponse is the response from POST /v1/data/stream.
+// See the "link" field in the OpenAPI spec (v1.yaml).
+type streamDataResponse struct {
+	Link string `json:"link"`
 }
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
@@ -158,14 +166,15 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 		perDeviceQM := qm
 		perDeviceQM.DeviceName = device
 
-		// Call Foxglove API for this device
-		responseData, err := d.fetchFoxgloveStream(ctx, config, perDeviceQM, startTime, endTime)
+		// Call Foxglove API for this device and get a streaming reader for the MCAP data
+		mcapBody, err := d.fetchFoxgloveStream(ctx, config, perDeviceQM, startTime, endTime)
 		if err != nil {
 			return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to fetch data for device %q: %v", device, err))
 		}
+		defer mcapBody.Close()
 
-		// Convert to data frames
-		frames, err := d.convertToDataFrames(responseData, perDeviceQM)
+		// Convert the MCAP stream to data frames
+		frames, err := d.convertToDataFrames(mcapBody, perDeviceQM)
 		if err != nil {
 			return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed to convert data for device %q: %v", device, err))
 		}
@@ -191,8 +200,10 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 	return response
 }
 
-// fetchFoxgloveStream calls the Foxglove API /data/stream endpoint
-func (d *Datasource) fetchFoxgloveStream(ctx context.Context, config *models.PluginSettings, qm queryModel, startTime, endTime string) ([]byte, error) {
+// fetchFoxgloveStream calls the Foxglove API /data/stream endpoint to obtain
+// a download link, then fetches the MCAP data from that link. The returned
+// io.ReadCloser streams the MCAP data and must be closed by the caller.
+func (d *Datasource) fetchFoxgloveStream(ctx context.Context, config *models.PluginSettings, qm queryModel, startTime, endTime string) (io.ReadCloser, error) {
 	// Build request payload according to Foxglove API specification
 	// See: https://docs.foxglove.dev/api#tag/Stream-data
 	payload := map[string]interface{}{
@@ -255,112 +266,124 @@ func (d *Datasource) fetchFoxgloveStream(ctx context.Context, config *models.Plu
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Parse the response to extract the download URL
-	var downloadResponse map[string]interface{}
+	var downloadResponse streamDataResponse
 	if err := json.Unmarshal(body, &downloadResponse); err != nil {
 		return nil, fmt.Errorf("failed to parse download response: %w", err)
 	}
 
-	// Extract the URL from the response (could be "url", "downloadUrl", "link", etc.)
-	downloadURL, ok := downloadResponse["url"].(string)
-	if !ok {
-		// Try alternative field names
-		if url, ok := downloadResponse["downloadUrl"].(string); ok {
-			downloadURL = url
-		} else if url, ok := downloadResponse["link"].(string); ok {
-			downloadURL = url
-		} else {
-			// If no URL field found, return the raw response for debugging
-			return nil, fmt.Errorf("no download URL found in response: %s", string(body))
-		}
-	}
-
+	downloadURL := downloadResponse.Link
 	if downloadURL == "" {
-		return nil, fmt.Errorf("empty download URL in response: %s", string(body))
+		return nil, fmt.Errorf("no download link in response: %s", string(body))
 	}
 
-	// Make GET request to download the actual data file
-	return d.downloadFile(ctx, downloadURL)
-}
-
-// downloadFile makes a GET request to download the file from the provided URL
-func (d *Datasource) downloadFile(ctx context.Context, fileURL string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", fileURL, nil)
+	// GET the actual MCAP data from the download URL
+	dlReq, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create download request: %w", err)
 	}
 
-	// Make request (no auth needed for pre-signed URLs typically)
-	client := &http.Client{
-		Timeout: 60 * time.Second, // Longer timeout for file downloads
-	}
-	resp, err := client.Do(req)
+	dlResp, err := client.Do(dlReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to download file: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("download returned status %d for URL %s: %s", resp.StatusCode, fileURL, string(body))
+		return nil, fmt.Errorf("failed to download MCAP data: %w", err)
 	}
 
-	// Read the file content
-	fileData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file content: %w", err)
+	if dlResp.StatusCode != http.StatusOK {
+		dlBody, _ := io.ReadAll(dlResp.Body)
+		dlResp.Body.Close()
+		return nil, fmt.Errorf("download returned status %d: %s", dlResp.StatusCode, string(dlBody))
 	}
 
-	return fileData, nil
+	return dlResp.Body, nil
 }
 
-// convertToDataFrames converts Foxglove API response to Grafana data frames
-func (d *Datasource) convertToDataFrames(responseData []byte, qm queryModel) (data.Frames, error) {
-	// Parse the JSON response from Foxglove
-	// The exact structure depends on the Foxglove API response format
-	// This is a placeholder implementation - you'll need to adjust based on actual API response
+// convertToDataFrames performs a streaming MCAP decode from the given reader,
+// transcodes each ros1msg-encoded message to JSON, extracts the single numeric
+// field as the Y value, and uses the message LogTime as the X value.
+func (d *Datasource) convertToDataFrames(body io.Reader, qm queryModel) (data.Frames, error) {
+	reader, err := mcap.NewReader(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create MCAP reader: %w", err)
+	}
+	defer reader.Close()
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(responseData, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	// The response body is not seekable, so we must disable index-based reading.
+	iter, err := reader.Messages(mcap.UsingIndex(false))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create message iterator: %w", err)
 	}
 
-	// Create a frame for the data
-	frame := data.NewFrame("foxglove_data")
+	// Cache JSON transcoders by schema ID so we build each one only once.
+	transcoders := make(map[uint16]*ros1msg.JSONTranscoder)
 
-	// Extract time and value fields from the response
-	// This is a simplified example - adjust based on actual Foxglove response structure
-	times := []time.Time{}
-	values := []float64{}
+	var times []time.Time
+	var values []float64
 
-	// Try to extract data points from the response
-	if messages, ok := result["messages"].([]interface{}); ok {
-		for _, msg := range messages {
-			if msgMap, ok := msg.(map[string]interface{}); ok {
-				// Extract timestamp (adjust field names based on actual API)
-				if timestamp, ok := msgMap["timestamp"].(float64); ok {
-					times = append(times, time.Unix(0, int64(timestamp*1e9)))
-				}
-
-				// Extract value (adjust based on actual message structure)
-				if value, ok := msgMap["value"].(float64); ok {
-					values = append(values, value)
-				}
-			}
+	err = mcap.Range(iter, func(schema *mcap.Schema, channel *mcap.Channel, message *mcap.Message) error {
+		// Only ros1msg encoding is supported.
+		if channel.MessageEncoding != "ros1msg" {
+			return fmt.Errorf(
+				"unsupported message encoding %q on channel %q (topic %s); only ros1msg is supported",
+				channel.MessageEncoding, channel.ID, channel.Topic,
+			)
 		}
+
+		// Get or create a transcoder for this schema.
+		tc, ok := transcoders[schema.ID]
+		if !ok {
+			tc, err = ros1msg.NewJSONTranscoder(schema.Name, schema.Data)
+			if err != nil {
+				return fmt.Errorf("failed to create JSON transcoder for schema %q: %w", schema.Name, err)
+			}
+			transcoders[schema.ID] = tc
+		}
+
+		// Transcode the ros1msg binary data to JSON.
+		var jsonBuf bytes.Buffer
+		if err := tc.Transcode(&jsonBuf, bytes.NewReader(message.Data)); err != nil {
+			return fmt.Errorf("failed to transcode message to JSON: %w", err)
+		}
+
+		// Parse the JSON object. We expect exactly {"data_0": <value>}.
+		var obj map[string]interface{}
+		if err := json.Unmarshal(jsonBuf.Bytes(), &obj); err != nil {
+			return fmt.Errorf("failed to parse transcoded JSON: %w", err)
+		}
+
+		// Extract the single field value.
+		if len(obj) != 1 {
+			return fmt.Errorf("expected exactly 1 field in message JSON, got %d: %v", len(obj), obj)
+		}
+		var val float64
+		for fieldName, raw := range obj {
+			v, ok := raw.(float64)
+			if !ok {
+				return fmt.Errorf("field %q value is not a float64 (got %T: %v)", fieldName, raw, raw)
+			}
+			val = v
+		}
+
+		// X = message timestamp (LogTime is nanoseconds since epoch).
+		ts := time.Unix(0, int64(message.LogTime))
+
+		times = append(times, ts)
+		values = append(values, val)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error reading MCAP messages: %w", err)
 	}
 
-	// If no data was extracted, create a simple frame with time range
 	if len(times) == 0 {
-		now := time.Now()
+		// Return an empty frame rather than an error when there are no messages.
+		frame := data.NewFrame("foxglove_data")
 		frame.Fields = append(frame.Fields,
-			data.NewField("time", nil, []time.Time{now.Add(-time.Hour), now}),
-			data.NewField("value", nil, []float64{0, 0}),
+			data.NewField("time", nil, []time.Time{}),
+			data.NewField("value", nil, []float64{}),
 		)
 		return data.Frames{frame}, nil
 	}
 
-	// Add fields to frame
+	frame := data.NewFrame("foxglove_data")
 	frame.Fields = append(frame.Fields,
 		data.NewField("time", nil, times),
 		data.NewField("value", nil, values),
