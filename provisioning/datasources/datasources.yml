@@ -10,5 +10,7 @@ datasources:
     editable: true
     jsonData:
       baseUrl: ${FOXGLOVE_API_BASE_URL}
+      projectId: ${FOXGLOVE_PROJECT_ID}
+      siteId: ${FOXGLOVE_SITE_ID}
     secureJsonData:
       apiKey: ${FOXGLOVE_API_KEY}

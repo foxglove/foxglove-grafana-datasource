@@ -12,44 +12,46 @@ export function ConfigEditor(props: Props) {
   const onBaseUrlChange = (event: ChangeEvent<HTMLInputElement>) => {
     onOptionsChange({
       ...options,
-      jsonData: {
-        ...jsonData,
-        baseUrl: event.target.value,
-      },
+      jsonData: { ...jsonData, baseUrl: event.target.value },
     });
   };
 
-  // Secure field (only sent to the backend)
+  const onProjectIdChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onOptionsChange({
+      ...options,
+      jsonData: { ...jsonData, projectId: event.target.value },
+    });
+  };
+
+  const onSiteIdChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onOptionsChange({
+      ...options,
+      jsonData: { ...jsonData, siteId: event.target.value },
+    });
+  };
+
   const onAPIKeyChange = (event: ChangeEvent<HTMLInputElement>) => {
     onOptionsChange({
       ...options,
-      secureJsonData: {
-        apiKey: event.target.value,
-      },
+      secureJsonData: { apiKey: event.target.value },
     });
   };
 
   const onResetAPIKey = () => {
     onOptionsChange({
       ...options,
-      secureJsonFields: {
-        ...options.secureJsonFields,
-        apiKey: false,
-      },
-      secureJsonData: {
-        ...options.secureJsonData,
-        apiKey: '',
-      },
+      secureJsonFields: { ...secureJsonFields, apiKey: false },
+      secureJsonData: { ...secureJsonData, apiKey: '' },
     });
   };
 
   return (
     <>
-      <InlineField label="API Base URL" labelWidth={14} interactive tooltip={'Optional: Override the default Foxglove API base URL'}>
+      <InlineField label="API Base URL" labelWidth={14} tooltip="Optional: Override the default Foxglove API base URL">
         <Input
-          id="config-editor-path"
+          id="config-editor-base-url"
           onChange={onBaseUrlChange}
-          value={jsonData.baseUrl}
+          value={jsonData.baseUrl ?? ''}
           placeholder="https://api.foxglove.dev"
           width={40}
         />
@@ -57,8 +59,8 @@ export function ConfigEditor(props: Props) {
       <InlineField
         label="API Key"
         labelWidth={14}
-        interactive
-        tooltip={'Stored securely and only sent to the backend. For provisioning/CI you can also set the FOXGLOVE_API_KEY environment variable.'}
+        required
+        tooltip="Stored securely and only sent to the backend. For provisioning/CI you can also set the FOXGLOVE_API_KEY environment variable."
       >
         <SecretInput
           required
@@ -69,6 +71,24 @@ export function ConfigEditor(props: Props) {
           width={40}
           onReset={onResetAPIKey}
           onChange={onAPIKeyChange}
+        />
+      </InlineField>
+      <InlineField label="Project ID" labelWidth={14} required tooltip="The Foxglove project ID to scope queries to">
+        <Input
+          id="config-editor-project-id"
+          onChange={onProjectIdChange}
+          value={jsonData.projectId ?? ''}
+          placeholder="proj_..."
+          width={40}
+        />
+      </InlineField>
+      <InlineField label="Site ID" labelWidth={14} required tooltip="The primary Foxglove site ID to search">
+        <Input
+          id="config-editor-site-id"
+          onChange={onSiteIdChange}
+          value={jsonData.siteId ?? ''}
+          placeholder="site_..."
+          width={40}
         />
       </InlineField>
     </>

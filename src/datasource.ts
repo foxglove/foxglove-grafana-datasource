@@ -1,7 +1,7 @@
 import { DataSourceInstanceSettings, CoreApp, ScopedVars } from '@grafana/data';
-import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
+import { DataSourceWithBackend, getTemplateSrv, TemplateSrv } from '@grafana/runtime';
 
-import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY } from './types';
+import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY, FilterWire } from './types';
 
 export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptions> {
   constructor(instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions>) {
@@ -13,19 +13,92 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   }
 
   applyTemplateVariables(query: MyQuery, scopedVars: ScopedVars) {
-    return {
-      ...query,
-      // Use 'csv' format so multi-value variables resolve to "dev1,dev2,dev3"
-      // which the backend splits and queries individually.
-      deviceName: getTemplateSrv().replace(query.deviceName || '', scopedVars, 'csv'),
-      topics: getTemplateSrv().replace(query.topics || '', scopedVars, 'csv'),
-      start: getTemplateSrv().replace(query.start || '', scopedVars),
-      end: getTemplateSrv().replace(query.end || '', scopedVars),
-    };
+    const tpl = getTemplateSrv();
+    const result = { ...query };
+
+    if (result.selection) {
+      if (result.selection.type === 'messagePath') {
+        result.selection = {
+          ...result.selection,
+          messagePath: tpl.replace(result.selection.messagePath, scopedVars),
+          columnAlias: tpl.replace(result.selection.columnAlias, scopedVars),
+        };
+      } else {
+        result.selection = {
+          ...result.selection,
+          key: tpl.replace(result.selection.key, scopedVars),
+          columnAlias: tpl.replace(result.selection.columnAlias, scopedVars),
+        };
+      }
+    }
+
+    if (result.groupBy) {
+      if (result.groupBy.type === 'deviceName') {
+        result.groupBy = {
+          ...result.groupBy,
+          deviceName: tpl.replace(result.groupBy.deviceName, scopedVars, 'csv'),
+        };
+      } else {
+        result.groupBy = {
+          ...result.groupBy,
+          key: tpl.replace(result.groupBy.key, scopedVars),
+        };
+      }
+    }
+
+    if (result.filter) {
+      result.filter = replaceFilterVars(result.filter, tpl, scopedVars);
+    }
+
+    return result;
   }
 
   filterQuery(query: MyQuery): boolean {
-    // if no deviceName has been provided, prevent the query from being executed
-    return !!query.deviceName;
+    if (!query.selection) {
+      return false;
+    }
+    if (query.selection.type === 'messagePath' && !query.selection.messagePath) {
+      return false;
+    }
+    if (query.selection.type === 'deviceProperty' && !query.selection.key) {
+      return false;
+    }
+    return true;
   }
+}
+
+/**
+ * Recursively walk the wire-format filter and apply Grafana template variable
+ * substitution to all string fields (value, field, topic).
+ */
+function replaceFilterVars(
+  filter: FilterWire,
+  tpl: TemplateSrv,
+  scopedVars: ScopedVars,
+): FilterWire {
+  if (!filter || typeof filter !== 'object') {
+    return filter;
+  }
+
+  const type = filter.type as string;
+
+  if (type === 'and' || type === 'or') {
+    return {
+      ...filter,
+      left: replaceFilterVars(filter.left as FilterWire, tpl, scopedVars),
+      right: replaceFilterVars(filter.right as FilterWire, tpl, scopedVars),
+    };
+  }
+
+  const result = { ...filter };
+  if (typeof result.value === 'string') {
+    result.value = tpl.replace(result.value, scopedVars);
+  }
+  if (typeof result.field === 'string') {
+    result.field = tpl.replace(result.field, scopedVars);
+  }
+  if (typeof result.topic === 'string') {
+    result.topic = tpl.replace(result.topic, scopedVars);
+  }
+  return result;
 }

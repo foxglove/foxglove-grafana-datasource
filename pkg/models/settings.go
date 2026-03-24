@@ -8,10 +8,11 @@ import (
 )
 
 type PluginSettings struct {
-	// BaseURL prefers the new jsonData.baseUrl. Path is kept for backward compatibility.
-	BaseURL string                `json:"baseUrl"`
-	Path    string                `json:"path"`
-	Secrets *SecretPluginSettings `json:"-"`
+	BaseURL   string                `json:"baseUrl"`
+	Path      string                `json:"path"` // Legacy; prefer BaseURL.
+	ProjectID string                `json:"projectId"`
+	SiteID    string                `json:"siteId"`
+	Secrets   *SecretPluginSettings `json:"-"`
 }
 
 type SecretPluginSettings struct {
