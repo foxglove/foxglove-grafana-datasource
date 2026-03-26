@@ -43,7 +43,7 @@ const parseMessagePath = (path: string): MessagePath | undefined => {
   const parser = new Parser(grammarObj);
   try {
     const result = parser.feed(path).results[0];
-    if (result == undefined) {
+    if (result === undefined) {
       return result;
     }
     if (!isFunctionChainSemanticallyValid(result as MessagePath)) {
@@ -68,18 +68,18 @@ const parseMessagePath = (path: string): MessagePath | undefined => {
  * consumers like `isValidMathFunctionWithFieldAccess` in the Plot panel.
  */
 function isFunctionChainSemanticallyValid(messagePath: MessagePath): boolean {
-  if (messagePath.functionChain == undefined) {
+  if (messagePath.functionChain === undefined) {
     return true;
   }
   for (const step of messagePath.functionChain) {
-    if (step.fieldAccess == undefined) {
+    if (step.fieldAccess === undefined) {
       continue;
     }
     if (step.function.length === 0) {
       return false;
     }
     const functionName = parseFunction(step.function)?.name;
-    if (functionName == undefined || !STRUCT_FUNCTION_NAMES.has(functionName)) {
+    if (functionName === undefined || !STRUCT_FUNCTION_NAMES.has(functionName)) {
       return false;
     }
   }
@@ -88,7 +88,7 @@ function isFunctionChainSemanticallyValid(messagePath: MessagePath): boolean {
 
 function isFilterMissingOperatorOrValue(filter: MessagePathFilter): boolean {
   // Empty filters ({} or {foo} or {bar==}) intentionally omit operator/value for autocomplete
-  return filter.operator == undefined || filter.value == undefined;
+  return filter.operator === undefined || filter.value === undefined;
 }
 
 /**
@@ -117,7 +117,7 @@ function isMessagePathFullySpecified(parsedMessagePath: MessagePath): boolean {
     }
     // slices are ignored for autocomplete validation here. These should be handled by the grammar.
   }
-  if (parsedMessagePath.functionChain != undefined) {
+  if (parsedMessagePath.functionChain !== undefined) {
     for (const step of parsedMessagePath.functionChain) {
       if (step.function === "") {
         return false;

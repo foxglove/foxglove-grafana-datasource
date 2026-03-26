@@ -25,7 +25,7 @@ export function parseFunction(pathFunction: string): ParsedMessagePathFunction |
     return undefined;
   }
   const raw = match[2];
-  if (raw == undefined || raw.length === 0) {
+  if (raw === undefined || raw.length === 0) {
     return { name };
   }
   const unquoted = raw.replace(/^["'](.*)["']$/s, "$1");
@@ -97,12 +97,12 @@ export function fillVariablesInPath(
     return undefined;
   };
 
-  if (filledMessagePath.functionChain != undefined) {
+  if (filledMessagePath.functionChain !== undefined) {
     filledMessagePath.functionChain = filledMessagePath.functionChain.map((step) => {
       const parsed = parseFunction(step.function);
-      if (parsed?.operandRaw != undefined) {
+      if (parsed?.operandRaw !== undefined) {
         const resolved = resolveSingleOperand(parsed.operandRaw.trim());
-        if (resolved != undefined) {
+        if (resolved !== undefined) {
           return { ...step, function: `${parsed.name}(${resolved})` };
         }
       }

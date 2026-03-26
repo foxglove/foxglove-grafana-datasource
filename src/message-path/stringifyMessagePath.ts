@@ -20,7 +20,7 @@ export function stringifyMessagePath(
       ? path.functionChain
           .map(
             (step) =>
-              `.@${step.function}` + (step.fieldAccess != undefined ? `.${step.fieldAccess}` : ""),
+              `.@${step.function}` + (step.fieldAccess !== undefined ? `.${step.fieldAccess}` : ""),
           )
           .join("")
       : "")
