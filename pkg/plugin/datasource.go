@@ -65,7 +65,7 @@ type grafanaQueryRequest struct {
 	Start       string          `json:"start"`
 	End         string          `json:"end"`
 	Selection   json.RawMessage `json:"selection"`
-	Filter      json.RawMessage `json:"filter"`
+	Filter      json.RawMessage `json:"filter,omitempty"`
 	GroupBy     json.RawMessage `json:"groupBy"`
 	Aggregation json.RawMessage `json:"aggregation,omitempty"`
 }

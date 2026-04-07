@@ -2,7 +2,7 @@ import { DataSourceInstanceSettings, CoreApp, ScopedVars, rangeUtil } from '@gra
 import { DataSourceWithBackend, getTemplateSrv, TemplateSrv } from '@grafana/runtime';
 
 import { parseAndConvertMessagePath } from './messagePathSet';
-import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY, FilterWire, FilterWireSerialized, serializeFilterNode, newFilterLeaf } from './types';
+import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY, FilterWire, FilterWireSerialized, serializeFilterNode, FilterNode } from './types';
 
 const MS_TO_NS = 1_000_000;
 
@@ -44,9 +44,10 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
       result.groupBy = groupBy;
     }
 
-    const filter = result.filter ?? newFilterLeaf();
-    const serialized = serializeFilterNode(filter);
-    result.filterWire = resolveFilter(serialized, tpl, scopedVars);
+    if (result.filter && !isEmptyFilter(result.filter)) {
+      const serialized = serializeFilterNode(result.filter);
+      result.filterWire = resolveFilter(serialized, tpl, scopedVars);
+    }
 
     if (result.aggregation) {
       const intervalStr = tpl.replace(result.aggregation.interval || '', scopedVars);
@@ -117,4 +118,12 @@ function resolveFilter(
     field: tpl.replace(filter.field, scopedVars),
     value: tpl.replace(filter.value, scopedVars),
   };
+}
+
+/** A filter is "empty" when the user hasn't configured any meaningful conditions. */
+function isEmptyFilter(node: FilterNode): boolean {
+  if (node.kind === 'leaf') {
+    return node.value === '';
+  }
+  return node.children.every(isEmptyFilter);
 }
