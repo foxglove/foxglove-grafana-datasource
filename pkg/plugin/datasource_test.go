@@ -34,45 +34,6 @@ func TestQueryDataMissingSelection(t *testing.T) {
 	}
 }
 
-func TestAutoAggregation(t *testing.T) {
-	from := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	to := from.Add(1 * time.Hour)
-
-	q := backend.DataQuery{
-		MaxDataPoints: 100,
-		TimeRange: backend.TimeRange{
-			From: from,
-			To:   to,
-		},
-	}
-
-	agg := autoAggregation(q)
-	if agg == nil {
-		t.Fatal("expected aggregation to be computed")
-	}
-
-	expectedInterval := int64(time.Hour.Nanoseconds() / 100)
-	if agg.IntervalNanoseconds != expectedInterval {
-		t.Fatalf("expected interval %d, got %d", expectedInterval, agg.IntervalNanoseconds)
-	}
-	if agg.Type != "last" {
-		t.Fatalf("expected type 'last', got %q", agg.Type)
-	}
-}
-
-func TestAutoAggregationZeroMaxDP(t *testing.T) {
-	q := backend.DataQuery{
-		MaxDataPoints: 0,
-		TimeRange: backend.TimeRange{
-			From: time.Now(),
-			To:   time.Now().Add(time.Hour),
-		},
-	}
-	if agg := autoAggregation(q); agg != nil {
-		t.Fatal("expected nil aggregation for zero maxDataPoints")
-	}
-}
-
 func TestParseGrafanaFrameJSON_SingleFrame(t *testing.T) {
 	// Use the exact wire format the Grafana SDK produces.
 	f := data.NewFrame("test",

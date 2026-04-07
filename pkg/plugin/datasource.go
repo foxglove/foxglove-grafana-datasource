@@ -121,16 +121,7 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 		GroupBy:   qm.GroupBy,
 	}
 
-	// If the frontend provided an explicit aggregation, use it.
-	// Otherwise, auto-downsample based on MaxDataPoints and time range.
-	if len(qm.AggregationWire) == 0 || string(qm.AggregationWire) == "null" {
-		if agg := autoAggregation(query); agg != nil {
-			raw, _ := json.Marshal(agg)
-			apiReq.Aggregation = raw
-		}
-	} else {
-		apiReq.Aggregation = qm.AggregationWire
-	}
+	apiReq.Aggregation = qm.AggregationWire
 
 	frames, err := d.fetchGrafanaQuery(ctx, config, apiReq)
 	if err != nil {
@@ -138,32 +129,6 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 	}
 
 	return backend.DataResponse{Frames: frames}
-}
-
-type autoAggregationPayload struct {
-	IntervalNanoseconds int64  `json:"intervalNanoseconds"`
-	Type                string `json:"type"`
-}
-
-// autoAggregation computes a "last"-value aggregation based on the query
-// time range and maxDataPoints so the server downsamples for us.
-func autoAggregation(query backend.DataQuery) *autoAggregationPayload {
-	maxDP := query.MaxDataPoints
-	if maxDP <= 0 {
-		return nil
-	}
-	rangeNs := query.TimeRange.To.Sub(query.TimeRange.From).Nanoseconds()
-	if rangeNs <= 0 {
-		return nil
-	}
-	intervalNs := rangeNs / maxDP
-	if intervalNs < 1 {
-		intervalNs = 1
-	}
-	return &autoAggregationPayload{
-		IntervalNanoseconds: intervalNs,
-		Type:                "last",
-	}
 }
 
 // fetchGrafanaQuery POSTs to /v1/data/grafana-query, follows the signed link,
