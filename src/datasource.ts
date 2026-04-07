@@ -2,7 +2,7 @@ import { DataSourceInstanceSettings, CoreApp, ScopedVars, rangeUtil } from '@gra
 import { DataSourceWithBackend, getTemplateSrv, TemplateSrv } from '@grafana/runtime';
 
 import { parseAndConvertMessagePath } from './messagePathSet';
-import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY, FilterWire, serializeFilterNode } from './types';
+import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY, FilterWire, FilterWireSerialized, serializeFilterNode } from './types';
 
 const MS_TO_NS = 1_000_000;
 
@@ -47,8 +47,8 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
     }
 
     if (result.filter) {
-      const wire = serializeFilterNode(result.filter);
-      result.filterWire = replaceFilterVars(wire, tpl, scopedVars);
+      const serialized = serializeFilterNode(result.filter);
+      result.filterWire = resolveFilter(serialized, tpl, scopedVars);
     }
 
     if (result.aggregation) {
@@ -85,46 +85,39 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
 }
 
 /**
- * Recursively walk the wire-format filter, apply Grafana template variable
- * substitution, and for message predicates parse the messagePath into
- * topic + selectorPath for the API.
+ * Resolve a serialized filter tree into the final API wire format:
+ * apply Grafana template variable substitution and parse message paths
+ * into topic + selectorPath.
  */
-function replaceFilterVars(
-  filter: FilterWire,
+function resolveFilter(
+  filter: FilterWireSerialized,
   tpl: TemplateSrv,
   scopedVars: ScopedVars,
 ): FilterWire {
-  if (!filter || typeof filter !== 'object') {
-    return filter;
-  }
-
-  const type = filter.type as string;
-
-  if (type === 'and' || type === 'or') {
+  if (filter.type === 'and' || filter.type === 'or') {
     return {
-      ...filter,
-      left: replaceFilterVars(filter.left as FilterWire, tpl, scopedVars),
-      right: replaceFilterVars(filter.right as FilterWire, tpl, scopedVars),
+      type: filter.type,
+      left: resolveFilter(filter.left, tpl, scopedVars),
+      right: resolveFilter(filter.right, tpl, scopedVars),
     };
   }
 
-  const result = { ...filter };
-  if (typeof result.value === 'string') {
-    result.value = tpl.replace(result.value, scopedVars);
-  }
-  if (typeof result.field === 'string') {
-    result.field = tpl.replace(result.field, scopedVars);
-  }
-
-  if (type === 'message' && typeof result.messagePath === 'string') {
-    const raw = tpl.replace(result.messagePath, scopedVars);
+  if (filter.type === 'message') {
+    const raw = tpl.replace(filter.messagePath, scopedVars);
     const parsed = parseAndConvertMessagePath(raw);
-    delete result.messagePath;
-    if (parsed.ok) {
-      result.topic = parsed.parsed.topic;
-      result.selectorPath = parsed.parsed.selectorPath;
-    }
+    return {
+      type: 'message',
+      op: filter.op,
+      topic: parsed.ok ? parsed.parsed.topic : '',
+      selectorPath: parsed.ok ? parsed.parsed.selectorPath : [],
+      value: tpl.replace(filter.value, scopedVars),
+    };
   }
 
-  return result;
+  return {
+    type: filter.type,
+    op: filter.op,
+    field: tpl.replace(filter.field, scopedVars),
+    value: tpl.replace(filter.value, scopedVars),
+  };
 }

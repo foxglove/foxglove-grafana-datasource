@@ -18,7 +18,6 @@ const MAX_DEPTH = 2;
 
 const PREDICATE_TYPE_OPTIONS: Array<SelectableValue<LeafPredicateType>> = [
   { label: 'Device', value: 'device' },
-  { label: 'Device Property', value: 'device-property' },
   { label: 'Message', value: 'message' },
   { label: 'Event', value: 'event' },
   { label: 'Recording', value: 'recording' },

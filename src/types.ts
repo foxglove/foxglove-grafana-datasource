@@ -58,23 +58,22 @@ export interface AggregationWire {
 // ---------------------------------------------------------------------------
 // Filter types
 //
-// The wire format (what the backend and Foxglove API see) is a recursive
-// tagged union matching the Rust QueryPredicate type.  The UI works with a
-// friendlier representation (FilterNode) that uses flat arrays for groups
-// instead of binary left/right trees.
-//
-// serializeFilterNode / deserializeFilterNode convert between the two.
+// The UI works with FilterNode — a tree using flat arrays for groups.
+// serializeFilterNode converts to FilterWireSerialized (binary left/right
+// tree, message predicates carry raw messagePath strings).
+// replaceFilterVars() in datasource.ts resolves template variables and
+// parses message paths, producing the final FilterWire sent to the API.
 // ---------------------------------------------------------------------------
 
 export type FilterOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like';
 
-export type LeafPredicateType = 'device' | 'device-property' | 'message' | 'event' | 'recording';
+export type LeafPredicateType = 'device' | 'message' | 'event' | 'recording';
 
 export interface FilterLeaf {
   kind: 'leaf';
   predicateType: LeafPredicateType;
   op: FilterOp;
-  /** Field name for device / device-property / event / recording predicates. */
+  /** Field name for device / event / recording predicates (e.g. "name", "properties.fleet"). */
   field: string;
   /** Full message path for message predicates (e.g. /imu.accel.x). */
   messagePath: string;
@@ -89,8 +88,54 @@ export interface FilterGroup {
 
 export type FilterNode = FilterLeaf | FilterGroup;
 
-/** Wire format — opaque JSON forwarded by the backend. */
-export type FilterWire = Record<string, unknown>;
+// ---------------------------------------------------------------------------
+// Wire format types
+//
+// Two phases: "serialized" (output of serializeFilterNode, message predicates
+// still carry the raw messagePath string) and "resolved" (after template
+// variable substitution + message path parsing — what the API receives).
+// ---------------------------------------------------------------------------
+
+type FieldPredicateType = 'device' | 'event' | 'recording';
+
+/** Wire predicate for device / event / recording. */
+export interface FilterWireFieldPredicate {
+  type: FieldPredicateType;
+  op: FilterOp;
+  field: string;
+  value: string;
+}
+
+/** Serialized message predicate — still has the raw messagePath string. */
+export interface FilterWireMessageRaw {
+  type: 'message';
+  op: FilterOp;
+  messagePath: string;
+  value: string;
+}
+
+/** Resolved message predicate — messagePath parsed into topic + selectorPath. */
+export interface FilterWireMessageResolved {
+  type: 'message';
+  op: FilterOp;
+  topic: string;
+  selectorPath: Selector[];
+  value: string;
+}
+
+/** Serialized wire format — output of serializeFilterNode. */
+export type FilterWireSerialized =
+  | FilterWireFieldPredicate
+  | FilterWireMessageRaw
+  | { type: 'and'; left: FilterWireSerialized; right: FilterWireSerialized }
+  | { type: 'or'; left: FilterWireSerialized; right: FilterWireSerialized };
+
+/** Resolved wire format — sent to the backend / Foxglove API. */
+export type FilterWire =
+  | FilterWireFieldPredicate
+  | FilterWireMessageResolved
+  | { type: 'and'; left: FilterWire; right: FilterWire }
+  | { type: 'or'; left: FilterWire; right: FilterWire };
 
 // --- Factories ---
 
@@ -102,13 +147,13 @@ export function newFilterGroup(): FilterGroup {
   return { kind: 'group', operator: 'and', children: [newFilterLeaf()] };
 }
 
-// --- Serialization (UI → wire) ---
+// --- Serialization (UI → serialized wire) ---
 
-export function serializeFilterNode(node: FilterNode): FilterWire {
+export function serializeFilterNode(node: FilterNode): FilterWireSerialized {
   if (node.kind === 'leaf') {
     if (node.predicateType === 'message') {
       return {
-        type: node.predicateType,
+        type: 'message',
         op: node.op,
         messagePath: node.messagePath,
         value: node.value,
@@ -135,47 +180,6 @@ export function serializeFilterNode(node: FilterNode): FilterWire {
     acc = { type: operator, left: acc, right: serializeFilterNode(children[i]) };
   }
   return acc;
-}
-
-// --- Deserialization (wire → UI) ---
-
-export function deserializeFilterNode(wire: FilterWire): FilterNode {
-  if (!wire || typeof wire !== 'object' || !wire.type) {
-    return newFilterLeaf();
-  }
-
-  const t = wire.type as string;
-
-  if (t === 'and' || t === 'or') {
-    const children: FilterNode[] = [];
-    unfoldBinaryTree(wire, t, children);
-    return { kind: 'group', operator: t, children };
-  }
-
-  return {
-    kind: 'leaf',
-    predicateType: t as LeafPredicateType,
-    op: (wire.op as FilterOp) ?? 'eq',
-    field: (wire.field as string) ?? '',
-    messagePath: (wire.messagePath as string) ?? '',
-    value: (wire.value as string) ?? '',
-  };
-}
-
-function unfoldBinaryTree(wire: FilterWire, op: string, out: FilterNode[]): void {
-  const left = wire.left as FilterWire | undefined;
-  const right = wire.right as FilterWire | undefined;
-
-  if (left) {
-    if ((left.type as string) === op) {
-      unfoldBinaryTree(left, op, out);
-    } else {
-      out.push(deserializeFilterNode(left));
-    }
-  }
-  if (right) {
-    out.push(deserializeFilterNode(right));
-  }
 }
 
 /** Ensure the top-level node is always a group (for the editor UI). */
