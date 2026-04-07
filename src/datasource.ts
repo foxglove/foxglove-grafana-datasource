@@ -1,6 +1,7 @@
 import { DataSourceInstanceSettings, CoreApp, ScopedVars } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv, TemplateSrv } from '@grafana/runtime';
 
+import { parseAndConvertMessagePath } from './messagePathSet';
 import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY, FilterWire } from './types';
 
 export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptions> {
@@ -18,16 +19,17 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
 
     if (result.selection) {
       if (result.selection.type === 'messagePath') {
+        const rawPath = tpl.replace(result.selection.messagePath, scopedVars);
+        const converted = parseAndConvertMessagePath(rawPath);
         result.selection = {
           ...result.selection,
-          messagePath: tpl.replace(result.selection.messagePath, scopedVars),
-          columnAlias: tpl.replace(result.selection.columnAlias, scopedVars),
+          messagePath: rawPath,
+          messagePathSet: converted.ok ? converted.messagePathSet : undefined,
         };
       } else {
         result.selection = {
           ...result.selection,
           key: tpl.replace(result.selection.key, scopedVars),
-          columnAlias: tpl.replace(result.selection.columnAlias, scopedVars),
         };
       }
     }

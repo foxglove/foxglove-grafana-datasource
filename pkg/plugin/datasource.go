@@ -181,7 +181,7 @@ func (d *Datasource) fetchGrafanaQuery(
 	}
 
 	baseURL := getAPIBaseURL(config)
-	url := fmt.Sprintf("%s/v1/data/grafana-query", baseURL)
+	url := fmt.Sprintf("%s/v1/data/grafana-plugin-query", baseURL)
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonPayload))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

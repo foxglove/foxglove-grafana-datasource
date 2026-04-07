@@ -3,16 +3,22 @@ import { DataQuery } from '@grafana/schema';
 
 // --- Selection types ---
 
+import type { MessagePathSet } from './messagePathSet';
+
 export interface MessagePathSelection {
   type: 'messagePath';
+  /** Raw message path string entered by the user (stored in the query model). */
   messagePath: string;
-  columnAlias: string;
+  /**
+   * Parsed MessagePathSet for the API wire format. Populated by
+   * applyTemplateVariables() before sending to the backend — not stored.
+   */
+  messagePathSet?: MessagePathSet;
 }
 
 export interface DevicePropertySelection {
   type: 'deviceProperty';
   key: string;
-  columnAlias: string;
 }
 
 export type Selection = MessagePathSelection | DevicePropertySelection;
@@ -176,7 +182,7 @@ export interface MyQuery extends DataQuery {
 }
 
 export const DEFAULT_QUERY: Partial<MyQuery> = {
-  selection: { type: 'messagePath', messagePath: '', columnAlias: '' },
+  selection: { type: 'messagePath', messagePath: '' },
   filter: { type: 'device', op: 'eq', field: 'name', value: '' },
   groupBy: { type: 'deviceName', deviceName: '' },
 };

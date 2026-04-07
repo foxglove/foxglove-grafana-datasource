@@ -1,7 +1,8 @@
-import React, { ChangeEvent } from 'react';
+import React, { ChangeEvent, useMemo } from 'react';
 import { InlineField, InlineFieldRow, Input, Select, Stack } from '@grafana/ui';
 import { QueryEditorProps, SelectableValue } from '@grafana/data';
 import { DataSource } from '../datasource';
+import { parseAndConvertMessagePath } from '../messagePathSet';
 import {
   MyDataSourceOptions,
   MyQuery,
@@ -37,8 +38,22 @@ const AGGREGATION_TYPE_OPTIONS: Array<SelectableValue<AggregationType | '__auto_
 ];
 
 export function QueryEditor({ query, onChange, onRunQuery }: Props) {
-  const selection = query.selection ?? { type: 'messagePath', messagePath: '', columnAlias: '' };
+  const selection = query.selection ?? { type: 'messagePath', messagePath: '' };
   const groupBy = query.groupBy ?? { type: 'deviceName', deviceName: '' };
+
+  // Validate message path on every change so we can show inline feedback.
+  const rawMessagePath = selection.type === 'messagePath' ? selection.messagePath : '';
+  const messagePathError = useMemo(() => {
+    if (!rawMessagePath) {
+      return undefined;
+    }
+    // Skip validation for template variable references
+    if (rawMessagePath.includes('$')) {
+      return undefined;
+    }
+    const result = parseAndConvertMessagePath(rawMessagePath);
+    return result.ok ? undefined : result.error;
+  }, [rawMessagePath]);
 
   // --- Selection handlers ---
 
@@ -48,8 +63,8 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     }
     const newSel: Selection =
       opt.value === 'messagePath'
-        ? { type: 'messagePath', messagePath: '', columnAlias: '' }
-        : { type: 'deviceProperty', key: '', columnAlias: '' };
+        ? { type: 'messagePath', messagePath: '' }
+        : { type: 'deviceProperty', key: '' };
     onChange({ ...query, selection: newSel });
   };
 
@@ -70,13 +85,6 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     onChange({
       ...query,
       selection: { ...selection, key: e.target.value },
-    });
-  };
-
-  const onColumnAliasChange = (e: ChangeEvent<HTMLInputElement>) => {
-    onChange({
-      ...query,
-      selection: { ...selection, columnAlias: e.target.value },
     });
   };
 
@@ -149,12 +157,20 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
         </InlineField>
 
         {selection.type === 'messagePath' && (
-          <InlineField label="Message Path" labelWidth={14} tooltip="e.g. /imu.linear_acceleration.x" grow>
+          <InlineField
+            label="Message Path"
+            labelWidth={16}
+            tooltip="e.g. /imu.linear_acceleration.x"
+            grow
+            invalid={!!messagePathError}
+            error={messagePathError}
+          >
             <Input
               value={selection.messagePath}
               onChange={onMessagePathChange}
               onBlur={runOnBlur}
               placeholder="/topic.field.subfield"
+              invalid={!!messagePathError}
             />
           </InlineField>
         )}
@@ -170,15 +186,6 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
           </InlineField>
         )}
 
-        <InlineField label="Alias" labelWidth={8} tooltip="Column name in the result">
-          <Input
-            value={selection.columnAlias}
-            onChange={onColumnAliasChange}
-            onBlur={runOnBlur}
-            placeholder="alias"
-            width={16}
-          />
-        </InlineField>
       </InlineFieldRow>
 
       {/* Group By */}
@@ -193,7 +200,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
         </InlineField>
 
         {groupBy.type === 'deviceName' && (
-          <InlineField label="Device Name" labelWidth={14} tooltip="Supports template variables (e.g. $device)" grow>
+          <InlineField label="Device Name" labelWidth={16} tooltip="Supports template variables (e.g. $device)" grow>
             <Input
               value={groupBy.deviceName}
               onChange={onGroupByDeviceNameChange}
