@@ -2,7 +2,7 @@ import { DataSourceInstanceSettings, CoreApp, ScopedVars, rangeUtil } from '@gra
 import { DataSourceWithBackend, getTemplateSrv, TemplateSrv } from '@grafana/runtime';
 
 import { parseAndConvertMessagePath } from './messagePathSet';
-import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY, FilterWire, FilterWireSerialized, serializeFilterNode } from './types';
+import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY, FilterWire, FilterWireSerialized, serializeFilterNode, newFilterLeaf } from './types';
 
 const MS_TO_NS = 1_000_000;
 
@@ -37,19 +37,16 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
       }
     }
 
-    if (result.groupBy) {
-      if (result.groupBy.type === 'deviceProperty') {
-        result.groupBy = {
-          ...result.groupBy,
-          key: tpl.replace(result.groupBy.key, scopedVars),
-        };
-      }
+    const groupBy = result.groupBy ?? { type: 'deviceId' as const };
+    if (groupBy.type === 'deviceProperty') {
+      result.groupBy = { ...groupBy, key: tpl.replace(groupBy.key, scopedVars) };
+    } else {
+      result.groupBy = groupBy;
     }
 
-    if (result.filter) {
-      const serialized = serializeFilterNode(result.filter);
-      result.filterWire = resolveFilter(serialized, tpl, scopedVars);
-    }
+    const filter = result.filter ?? newFilterLeaf();
+    const serialized = serializeFilterNode(filter);
+    result.filterWire = resolveFilter(serialized, tpl, scopedVars);
 
     if (result.aggregation) {
       const intervalStr = tpl.replace(result.aggregation.interval || '', scopedVars);

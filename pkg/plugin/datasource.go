@@ -52,9 +52,9 @@ func getAPIBaseURL(config *models.PluginSettings) string {
 // The backend treats selection, filter, groupBy, and aggregation as opaque
 // JSON objects that are forwarded directly to the Foxglove API.
 type queryModel struct {
-	Selection      json.RawMessage `json:"selection"`
-	FilterWire     json.RawMessage `json:"filterWire"`
-	GroupBy        json.RawMessage `json:"groupBy"`
+	Selection       json.RawMessage `json:"selection"`
+	FilterWire      json.RawMessage `json:"filterWire"`
+	GroupBy         json.RawMessage `json:"groupBy"`
 	AggregationWire json.RawMessage `json:"aggregationWire,omitempty"`
 }
 
@@ -207,6 +207,8 @@ func (d *Datasource) fetchGrafanaQuery(
 	if qResp.Link == "" {
 		return nil, fmt.Errorf("API response contained no download link")
 	}
+
+	fmt.Println("qResp.Link", qResp.Link)
 
 	// Fetch the Grafana Frame JSON from the signed link.
 	dlReq, err := http.NewRequestWithContext(ctx, "GET", qResp.Link, nil)

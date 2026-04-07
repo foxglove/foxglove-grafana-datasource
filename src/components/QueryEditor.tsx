@@ -1,6 +1,6 @@
 import React, { ChangeEvent, useMemo } from 'react';
-import { InlineField, InlineFieldRow, Input, Select, Stack } from '@grafana/ui';
-import { QueryEditorProps, SelectableValue } from '@grafana/data';
+import { Combobox, type ComboboxOption, InlineField, InlineFieldRow, Input, Stack } from '@grafana/ui';
+import { QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
 import { parseAndConvertMessagePath } from '../messagePathSet';
 import {
@@ -16,17 +16,17 @@ import { FilterEditor } from './FilterEditor';
 
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
 
-const SELECTION_TYPE_OPTIONS: Array<SelectableValue<Selection['type']>> = [
+const SELECTION_TYPE_OPTIONS: Array<ComboboxOption<Selection['type']>> = [
   { label: 'Message Path', value: 'messagePath' },
   { label: 'Device Property', value: 'deviceProperty' },
 ];
 
-const GROUPBY_TYPE_OPTIONS: Array<SelectableValue<GroupBy['type']>> = [
+const GROUPBY_TYPE_OPTIONS: Array<ComboboxOption<GroupBy['type']>> = [
   { label: 'Device', value: 'deviceId' },
   { label: 'Device Property', value: 'deviceProperty' },
 ];
 
-const AGGREGATION_TYPE_OPTIONS: Array<SelectableValue<AggregationType | '__none__'>> = [
+const AGGREGATION_TYPE_OPTIONS: Array<ComboboxOption<AggregationType | '__none__'>> = [
   { label: 'None', value: '__none__' },
   { label: 'Last', value: 'last' },
   { label: 'First', value: 'first' },
@@ -40,13 +40,11 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
   const selection = query.selection ?? { type: 'messagePath', messagePath: '' };
   const groupBy = query.groupBy ?? { type: 'deviceId' };
 
-  // Validate message path on every change so we can show inline feedback.
   const rawMessagePath = selection.type === 'messagePath' ? selection.messagePath : '';
   const messagePathError = useMemo(() => {
     if (!rawMessagePath) {
       return undefined;
     }
-    // Skip validation for template variable references
     if (rawMessagePath.includes('$')) {
       return undefined;
     }
@@ -56,10 +54,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
   // --- Selection handlers ---
 
-  const onSelectionTypeChange = (opt: SelectableValue<Selection['type']>) => {
-    if (!opt.value) {
-      return;
-    }
+  const onSelectionTypeChange = (opt: ComboboxOption<Selection['type']>) => {
     const newSel: Selection =
       opt.value === 'messagePath'
         ? { type: 'messagePath', messagePath: '' }
@@ -93,10 +88,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
   // --- GroupBy handlers ---
 
-  const onGroupByTypeChange = (opt: SelectableValue<GroupBy['type']>) => {
-    if (!opt.value) {
-      return;
-    }
+  const onGroupByTypeChange = (opt: ComboboxOption<GroupBy['type']>) => {
     const newGB: GroupBy =
       opt.value === 'deviceId'
         ? { type: 'deviceId' }
@@ -114,8 +106,8 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
   // --- Aggregation handlers ---
   const currentAggType: AggregationType | '__none__' = query.aggregation?.type ?? '__none__';
 
-  const onAggregationTypeChange = (opt: SelectableValue<AggregationType | '__none__'>) => {
-    if (!opt.value || opt.value === '__none__') {
+  const onAggregationTypeChange = (opt: ComboboxOption<AggregationType | '__none__'>) => {
+    if (opt.value === '__none__') {
       onChange({ ...query, aggregation: undefined });
     } else {
       onChange({
@@ -144,7 +136,6 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     onChange({ ...query, filter });
   };
 
-  // Trigger query on blur of text inputs
   const runOnBlur = () => onRunQuery();
 
   return (
@@ -152,7 +143,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
       {/* Selection */}
       <InlineFieldRow>
         <InlineField label="Selection" labelWidth={14} tooltip="What data to select">
-          <Select
+          <Combobox
             options={SELECTION_TYPE_OPTIONS}
             value={selection.type}
             onChange={onSelectionTypeChange}
@@ -196,7 +187,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
       {selection.type === 'messagePath' && (
         <InlineFieldRow>
           <InlineField label="Group By" labelWidth={14} tooltip="How to group the results">
-            <Select
+            <Combobox
               options={GROUPBY_TYPE_OPTIONS}
               value={groupBy.type}
               onChange={onGroupByTypeChange}
@@ -224,7 +215,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
           labelWidth={14}
           tooltip="Downsampling method applied to query results"
         >
-          <Select
+          <Combobox
             options={AGGREGATION_TYPE_OPTIONS}
             value={currentAggType}
             onChange={onAggregationTypeChange}

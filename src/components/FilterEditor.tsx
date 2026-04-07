@@ -1,7 +1,7 @@
 import React, { ChangeEvent } from 'react';
 import { css } from '@emotion/css';
-import { GrafanaTheme2, SelectableValue } from '@grafana/data';
-import { Button, IconButton, Input, Select, Stack, useStyles2 } from '@grafana/ui';
+import { GrafanaTheme2 } from '@grafana/data';
+import { Button, Combobox, type ComboboxOption, IconButton, Input, Stack, useStyles2 } from '@grafana/ui';
 
 import {
   FilterNode,
@@ -16,14 +16,14 @@ import {
 
 const MAX_DEPTH = 2;
 
-const PREDICATE_TYPE_OPTIONS: Array<SelectableValue<LeafPredicateType>> = [
+const PREDICATE_TYPE_OPTIONS: Array<ComboboxOption<LeafPredicateType>> = [
   { label: 'Device', value: 'device' },
   { label: 'Message', value: 'message' },
   { label: 'Event', value: 'event' },
   { label: 'Recording', value: 'recording' },
 ];
 
-const OP_OPTIONS: Array<SelectableValue<FilterOp>> = [
+const OP_OPTIONS: Array<ComboboxOption<FilterOp>> = [
   { label: '=', value: 'eq' },
   { label: '≠', value: 'neq' },
   { label: '>', value: 'gt' },
@@ -33,7 +33,7 @@ const OP_OPTIONS: Array<SelectableValue<FilterOp>> = [
   { label: 'like', value: 'like' },
 ];
 
-const OPERATOR_OPTIONS: Array<SelectableValue<'and' | 'or'>> = [
+const OPERATOR_OPTIONS: Array<ComboboxOption<string>> = [
   { label: 'AND', value: 'and' },
   { label: 'OR', value: 'or' },
 ];
@@ -95,16 +95,17 @@ function FilterGroupEditor({ group, depth, onChange, onRemove }: FilterGroupEdit
     onChange({ ...group, children: [...group.children, newFilterGroup()] });
   };
 
-  const onOperatorChange = (opt: SelectableValue<'and' | 'or'>) => {
-    if (opt.value) {
-      onChange({ ...group, operator: opt.value });
+  const onOperatorChange = (opt: ComboboxOption<string>) => {
+    const v = opt.value;
+    if (v === 'and' || v === 'or') {
+      onChange({ ...group, operator: v });
     }
   };
 
   return (
     <div className={isNested ? styles.nestedGroup : styles.rootGroup}>
       <Stack direction="row" gap={1} alignItems="center">
-        <Select
+        <Combobox
           options={OPERATOR_OPTIONS}
           value={group.operator}
           onChange={onOperatorChange}
@@ -181,20 +182,16 @@ function FilterLeafEditor({ leaf, onChange, onRemove }: FilterLeafEditorProps) {
 
   const isMessage = leaf.predicateType === 'message';
 
-  const onTypeChange = (opt: SelectableValue<LeafPredicateType>) => {
-    if (opt.value) {
-      if (opt.value === 'message') {
-        onChange({ ...leaf, predicateType: opt.value, field: '', messagePath: leaf.messagePath || '' });
-      } else {
-        onChange({ ...leaf, predicateType: opt.value, messagePath: '', field: leaf.field || '' });
-      }
+  const onTypeChange = (opt: ComboboxOption<LeafPredicateType>) => {
+    if (opt.value === 'message') {
+      onChange({ ...leaf, predicateType: opt.value, field: '', messagePath: leaf.messagePath || '' });
+    } else {
+      onChange({ ...leaf, predicateType: opt.value, messagePath: '', field: leaf.field || '' });
     }
   };
 
-  const onOpChange = (opt: SelectableValue<FilterOp>) => {
-    if (opt.value) {
-      onChange({ ...leaf, op: opt.value });
-    }
+  const onOpChange = (opt: ComboboxOption<FilterOp>) => {
+    onChange({ ...leaf, op: opt.value });
   };
 
   const onFieldChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -211,7 +208,7 @@ function FilterLeafEditor({ leaf, onChange, onRemove }: FilterLeafEditorProps) {
 
   return (
     <div className={styles.leafRow}>
-      <Select
+      <Combobox
         options={PREDICATE_TYPE_OPTIONS}
         value={leaf.predicateType}
         onChange={onTypeChange}
@@ -232,7 +229,7 @@ function FilterLeafEditor({ leaf, onChange, onRemove }: FilterLeafEditorProps) {
           width={14}
         />
       )}
-      <Select
+      <Combobox
         options={OP_OPTIONS}
         value={leaf.op}
         onChange={onOpChange}
