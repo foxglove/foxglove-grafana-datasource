@@ -180,13 +180,15 @@ interface FilterLeafEditorProps {
 function FilterLeafEditor({ leaf, onChange, onRemove }: FilterLeafEditorProps) {
   const styles = useStyles2(getStyles);
 
+  const isMessage = leaf.predicateType === 'message';
+
   const onTypeChange = (opt: SelectableValue<LeafPredicateType>) => {
     if (opt.value) {
-      onChange({
-        ...leaf,
-        predicateType: opt.value,
-        topic: opt.value === 'message' ? leaf.topic : '',
-      });
+      if (opt.value === 'message') {
+        onChange({ ...leaf, predicateType: opt.value, field: '', messagePath: leaf.messagePath || '' });
+      } else {
+        onChange({ ...leaf, predicateType: opt.value, messagePath: '', field: leaf.field || '' });
+      }
     }
   };
 
@@ -200,8 +202,8 @@ function FilterLeafEditor({ leaf, onChange, onRemove }: FilterLeafEditorProps) {
     onChange({ ...leaf, field: e.target.value });
   };
 
-  const onTopicChange = (e: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...leaf, topic: e.target.value });
+  const onMessagePathChange = (e: ChangeEvent<HTMLInputElement>) => {
+    onChange({ ...leaf, messagePath: e.target.value });
   };
 
   const onValueChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -216,20 +218,21 @@ function FilterLeafEditor({ leaf, onChange, onRemove }: FilterLeafEditorProps) {
         onChange={onTypeChange}
         width={18}
       />
-      {leaf.predicateType === 'message' && (
+      {isMessage ? (
         <Input
-          value={leaf.topic}
-          onChange={onTopicChange}
-          placeholder="/topic"
+          value={leaf.messagePath}
+          onChange={onMessagePathChange}
+          placeholder="/topic.field.subfield"
+          width={24}
+        />
+      ) : (
+        <Input
+          value={leaf.field}
+          onChange={onFieldChange}
+          placeholder="field"
           width={14}
         />
       )}
-      <Input
-        value={leaf.field}
-        onChange={onFieldChange}
-        placeholder="field"
-        width={14}
-      />
       <Select
         options={OP_OPTIONS}
         value={leaf.op}

@@ -85,8 +85,9 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
 }
 
 /**
- * Recursively walk the wire-format filter and apply Grafana template variable
- * substitution to all string fields (value, field, topic).
+ * Recursively walk the wire-format filter, apply Grafana template variable
+ * substitution, and for message predicates parse the messagePath into
+ * topic + selectorPath for the API.
  */
 function replaceFilterVars(
   filter: FilterWire,
@@ -114,8 +115,16 @@ function replaceFilterVars(
   if (typeof result.field === 'string') {
     result.field = tpl.replace(result.field, scopedVars);
   }
-  if (typeof result.topic === 'string') {
-    result.topic = tpl.replace(result.topic, scopedVars);
+
+  if (type === 'message' && typeof result.messagePath === 'string') {
+    const raw = tpl.replace(result.messagePath, scopedVars);
+    const parsed = parseAndConvertMessagePath(raw);
+    delete result.messagePath;
+    if (parsed.ok) {
+      result.topic = parsed.parsed.topic;
+      result.selectorPath = parsed.parsed.selectorPath;
+    }
   }
+
   return result;
 }

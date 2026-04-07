@@ -74,8 +74,10 @@ export interface FilterLeaf {
   kind: 'leaf';
   predicateType: LeafPredicateType;
   op: FilterOp;
+  /** Field name for device / device-property / event / recording predicates. */
   field: string;
-  topic: string;
+  /** Full message path for message predicates (e.g. /imu.accel.x). */
+  messagePath: string;
   value: string;
 }
 
@@ -93,7 +95,7 @@ export type FilterWire = Record<string, unknown>;
 // --- Factories ---
 
 export function newFilterLeaf(): FilterLeaf {
-  return { kind: 'leaf', predicateType: 'device', op: 'eq', field: 'name', topic: '', value: '' };
+  return { kind: 'leaf', predicateType: 'device', op: 'eq', field: 'name', messagePath: '', value: '' };
 }
 
 export function newFilterGroup(): FilterGroup {
@@ -104,16 +106,20 @@ export function newFilterGroup(): FilterGroup {
 
 export function serializeFilterNode(node: FilterNode): FilterWire {
   if (node.kind === 'leaf') {
-    const obj: FilterWire = {
+    if (node.predicateType === 'message') {
+      return {
+        type: node.predicateType,
+        op: node.op,
+        messagePath: node.messagePath,
+        value: node.value,
+      };
+    }
+    return {
       type: node.predicateType,
       op: node.op,
       field: node.field,
       value: node.value,
     };
-    if (node.predicateType === 'message') {
-      obj.topic = node.topic;
-    }
-    return obj;
   }
 
   const { operator, children } = node;
@@ -151,7 +157,7 @@ export function deserializeFilterNode(wire: FilterWire): FilterNode {
     predicateType: t as LeafPredicateType,
     op: (wire.op as FilterOp) ?? 'eq',
     field: (wire.field as string) ?? '',
-    topic: (wire.topic as string) ?? '',
+    messagePath: (wire.messagePath as string) ?? '',
     value: (wire.value as string) ?? '',
   };
 }
