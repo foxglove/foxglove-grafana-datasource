@@ -4,22 +4,17 @@ import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { Button, IconButton, Input, Select, Stack, useStyles2 } from '@grafana/ui';
 
 import {
-  FilterWire,
   FilterNode,
   FilterLeaf,
   FilterGroup,
   FilterOp,
   LeafPredicateType,
-  deserializeFilterNode,
-  serializeFilterNode,
   ensureGroup,
   newFilterLeaf,
   newFilterGroup,
 } from '../types';
 
-// ---------------------------------------------------------------------------
-// Select options
-// ---------------------------------------------------------------------------
+const MAX_DEPTH = 2;
 
 const PREDICATE_TYPE_OPTIONS: Array<SelectableValue<LeafPredicateType>> = [
   { label: 'Device', value: 'device' },
@@ -49,18 +44,13 @@ const OPERATOR_OPTIONS: Array<SelectableValue<'and' | 'or'>> = [
 // ---------------------------------------------------------------------------
 
 interface FilterEditorProps {
-  filter: FilterWire;
-  onChange: (filter: FilterWire) => void;
+  filter: FilterNode;
+  onChange: (filter: FilterNode) => void;
 }
 
 export function FilterEditor({ filter, onChange }: FilterEditorProps) {
-  const group = ensureGroup(deserializeFilterNode(filter));
-
-  const handleChange = (node: FilterNode) => {
-    onChange(serializeFilterNode(node));
-  };
-
-  return <FilterGroupEditor group={group} onChange={handleChange} />;
+  const group = ensureGroup(filter);
+  return <FilterGroupEditor group={group} depth={0} onChange={onChange} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,12 +59,15 @@ export function FilterEditor({ filter, onChange }: FilterEditorProps) {
 
 interface FilterGroupEditorProps {
   group: FilterGroup;
+  depth: number;
   onChange: (node: FilterNode) => void;
   onRemove?: () => void;
 }
 
-function FilterGroupEditor({ group, onChange, onRemove }: FilterGroupEditorProps) {
-  const styles = useStyles2(getGroupStyles);
+function FilterGroupEditor({ group, depth, onChange, onRemove }: FilterGroupEditorProps) {
+  const styles = useStyles2(getStyles);
+  const isNested = depth > 0;
+  const canNest = depth < MAX_DEPTH;
 
   const updateChild = (index: number, child: FilterNode) => {
     const next = [...group.children];
@@ -110,7 +103,7 @@ function FilterGroupEditor({ group, onChange, onRemove }: FilterGroupEditorProps
   };
 
   return (
-    <div className={styles.group}>
+    <div className={isNested ? styles.nestedGroup : styles.rootGroup}>
       <Stack direction="row" gap={1} alignItems="center">
         <Select
           options={OPERATOR_OPTIONS}
@@ -128,6 +121,7 @@ function FilterGroupEditor({ group, onChange, onRemove }: FilterGroupEditorProps
           <FilterNodeEditor
             key={i}
             node={child}
+            depth={depth}
             onChange={(n) => updateChild(i, n)}
             onRemove={() => removeChild(i)}
           />
@@ -138,9 +132,11 @@ function FilterGroupEditor({ group, onChange, onRemove }: FilterGroupEditorProps
         <Button variant="secondary" size="sm" icon="plus" onClick={addLeaf}>
           Condition
         </Button>
-        <Button variant="secondary" size="sm" icon="plus" onClick={addGroup}>
-          Group
-        </Button>
+        {canNest && (
+          <Button variant="secondary" size="sm" icon="plus" onClick={addGroup}>
+            Group
+          </Button>
+        )}
       </Stack>
     </div>
   );
@@ -152,13 +148,21 @@ function FilterGroupEditor({ group, onChange, onRemove }: FilterGroupEditorProps
 
 interface FilterNodeEditorProps {
   node: FilterNode;
+  depth: number;
   onChange: (node: FilterNode) => void;
   onRemove: () => void;
 }
 
-function FilterNodeEditor({ node, onChange, onRemove }: FilterNodeEditorProps) {
+function FilterNodeEditor({ node, depth, onChange, onRemove }: FilterNodeEditorProps) {
   if (node.kind === 'group') {
-    return <FilterGroupEditor group={node} onChange={onChange} onRemove={onRemove} />;
+    return (
+      <FilterGroupEditor
+        group={node}
+        depth={depth + 1}
+        onChange={onChange}
+        onRemove={onRemove}
+      />
+    );
   }
   return <FilterLeafEditor leaf={node} onChange={onChange} onRemove={onRemove} />;
 }
@@ -174,7 +178,7 @@ interface FilterLeafEditorProps {
 }
 
 function FilterLeafEditor({ leaf, onChange, onRemove }: FilterLeafEditorProps) {
-  const styles = useStyles2(getLeafStyles);
+  const styles = useStyles2(getStyles);
 
   const onTypeChange = (opt: SelectableValue<LeafPredicateType>) => {
     if (opt.value) {
@@ -205,7 +209,7 @@ function FilterLeafEditor({ leaf, onChange, onRemove }: FilterLeafEditorProps) {
   };
 
   return (
-    <div className={styles.row}>
+    <div className={styles.leafRow}>
       <Select
         options={PREDICATE_TYPE_OPTIONS}
         value={leaf.predicateType}
@@ -247,26 +251,29 @@ function FilterLeafEditor({ leaf, onChange, onRemove }: FilterLeafEditorProps) {
 // Styles
 // ---------------------------------------------------------------------------
 
-const getGroupStyles = (theme: GrafanaTheme2) => ({
-  group: css({
-    borderLeft: `2px solid ${theme.colors.border.medium}`,
-    paddingLeft: theme.spacing(1.5),
-    marginLeft: theme.spacing(0.5),
-    marginTop: theme.spacing(0.5),
-    marginBottom: theme.spacing(0.5),
+const getStyles = (theme: GrafanaTheme2) => ({
+  rootGroup: css({
     display: 'flex',
     flexDirection: 'column' as const,
     gap: theme.spacing(0.5),
+  }),
+  nestedGroup: css({
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: theme.spacing(0.5),
+    borderLeft: `2px solid ${theme.colors.primary.border}`,
+    background: theme.colors.background.secondary,
+    borderRadius: theme.shape.radius.default,
+    padding: theme.spacing(1),
+    marginTop: theme.spacing(0.25),
+    marginBottom: theme.spacing(0.25),
   }),
   children: css({
     display: 'flex',
     flexDirection: 'column' as const,
     gap: theme.spacing(0.5),
   }),
-});
-
-const getLeafStyles = (theme: GrafanaTheme2) => ({
-  row: css({
+  leafRow: css({
     display: 'flex',
     flexDirection: 'row' as const,
     alignItems: 'center',

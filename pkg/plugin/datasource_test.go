@@ -105,9 +105,9 @@ func TestParseGrafanaFrameJSON_Empty(t *testing.T) {
 
 func TestQueryModelUnmarshal(t *testing.T) {
 	raw := `{
-		"selection": {"type":"messagePath","messagePath":"/imu.accel.x","columnAlias":"accel_x"},
-		"filter": {},
-		"groupBy": {"type":"deviceName","deviceName":"robot-1"}
+		"selection": {"type":"messagePath","messagePath":"/imu.accel.x","topic":"/imu","selectorPath":[{"kind":"field","field":"accel"},{"kind":"field","field":"x"}]},
+		"filterWire": {"type":"device","op":"eq","field":"name","value":"robot-1"},
+		"groupBy": {"type":"deviceId"}
 	}`
 	var qm queryModel
 	if err := json.Unmarshal([]byte(raw), &qm); err != nil {
@@ -116,7 +116,10 @@ func TestQueryModelUnmarshal(t *testing.T) {
 	if len(qm.Selection) == 0 {
 		t.Fatal("selection should not be empty")
 	}
-	if len(qm.Aggregation) != 0 {
-		t.Fatal("aggregation should be empty when omitted")
+	if len(qm.FilterWire) == 0 {
+		t.Fatal("filterWire should not be empty")
+	}
+	if len(qm.AggregationWire) != 0 {
+		t.Fatal("aggregationWire should be empty when omitted")
 	}
 }

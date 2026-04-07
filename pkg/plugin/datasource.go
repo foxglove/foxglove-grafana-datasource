@@ -52,10 +52,10 @@ func getAPIBaseURL(config *models.PluginSettings) string {
 // The backend treats selection, filter, groupBy, and aggregation as opaque
 // JSON objects that are forwarded directly to the Foxglove API.
 type queryModel struct {
-	Selection   json.RawMessage `json:"selection"`
-	Filter      json.RawMessage `json:"filter"`
-	GroupBy     json.RawMessage `json:"groupBy"`
-	Aggregation json.RawMessage `json:"aggregation,omitempty"`
+	Selection      json.RawMessage `json:"selection"`
+	FilterWire     json.RawMessage `json:"filterWire"`
+	GroupBy        json.RawMessage `json:"groupBy"`
+	AggregationWire json.RawMessage `json:"aggregationWire,omitempty"`
 }
 
 // grafanaQueryRequest is the body POSTed to /v1/data/grafana-query.
@@ -117,19 +117,19 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 		Start:     startTime,
 		End:       endTime,
 		Selection: qm.Selection,
-		Filter:    qm.Filter,
+		Filter:    qm.FilterWire,
 		GroupBy:   qm.GroupBy,
 	}
 
-	// Auto-downsample: if the frontend didn't provide explicit aggregation,
-	// derive one from the Grafana query's MaxDataPoints and time range.
-	if len(qm.Aggregation) == 0 || string(qm.Aggregation) == "null" {
+	// If the frontend provided an explicit aggregation, use it.
+	// Otherwise, auto-downsample based on MaxDataPoints and time range.
+	if len(qm.AggregationWire) == 0 || string(qm.AggregationWire) == "null" {
 		if agg := autoAggregation(query); agg != nil {
 			raw, _ := json.Marshal(agg)
 			apiReq.Aggregation = raw
 		}
 	} else {
-		apiReq.Aggregation = qm.Aggregation
+		apiReq.Aggregation = qm.AggregationWire
 	}
 
 	frames, err := d.fetchGrafanaQuery(ctx, config, apiReq)
@@ -141,12 +141,11 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 }
 
 type autoAggregationPayload struct {
-	IntervalStart       string `json:"intervalStart"`
 	IntervalNanoseconds int64  `json:"intervalNanoseconds"`
 	Type                string `json:"type"`
 }
 
-// autoAggregation computes a "last"-value aggregation aligned to the query
+// autoAggregation computes a "last"-value aggregation based on the query
 // time range and maxDataPoints so the server downsamples for us.
 func autoAggregation(query backend.DataQuery) *autoAggregationPayload {
 	maxDP := query.MaxDataPoints
@@ -162,7 +161,6 @@ func autoAggregation(query backend.DataQuery) *autoAggregationPayload {
 		intervalNs = 1
 	}
 	return &autoAggregationPayload{
-		IntervalStart:       query.TimeRange.From.Format(time.RFC3339Nano),
 		IntervalNanoseconds: intervalNs,
 		Type:                "last",
 	}

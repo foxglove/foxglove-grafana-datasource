@@ -3,17 +3,20 @@ import { DataQuery } from '@grafana/schema';
 
 // --- Selection types ---
 
-import type { MessagePathSet } from './messagePathSet';
+import type { Selector } from './messagePathSet';
+
+export type { Selector };
 
 export interface MessagePathSelection {
   type: 'messagePath';
   /** Raw message path string entered by the user (stored in the query model). */
   messagePath: string;
   /**
-   * Parsed MessagePathSet for the API wire format. Populated by
-   * applyTemplateVariables() before sending to the backend — not stored.
+   * Parsed wire-format fields. Populated by applyTemplateVariables() before
+   * sending to the backend — not persisted in the query model.
    */
-  messagePathSet?: MessagePathSet;
+  topic?: string;
+  selectorPath?: Selector[];
 }
 
 export interface DevicePropertySelection {
@@ -25,9 +28,8 @@ export type Selection = MessagePathSelection | DevicePropertySelection;
 
 // --- GroupBy types ---
 
-export interface DeviceNameGroupBy {
-  type: 'deviceName';
-  deviceName: string;
+export interface DeviceIdGroupBy {
+  type: 'deviceId';
 }
 
 export interface DevicePropertyGroupBy {
@@ -35,16 +37,22 @@ export interface DevicePropertyGroupBy {
   key: string;
 }
 
-export type GroupBy = DeviceNameGroupBy | DevicePropertyGroupBy;
+export type GroupBy = DeviceIdGroupBy | DevicePropertyGroupBy;
 
 // --- Aggregation ---
 
-export type AggregationType = 'count' | 'sum' | 'min' | 'max' | 'average' | 'last' | 'first';
+export type AggregationType = 'last' | 'first' | 'max' | 'min' | 'sum' | 'average';
 
 export interface Aggregation {
-  intervalStart: string;
-  intervalNanoseconds: number;
+  /** Human-readable interval string, e.g. "10s", "1m", "1h". */
+  interval: string;
   type: AggregationType;
+}
+
+/** Wire format sent to the backend/API. */
+export interface AggregationWire {
+  intervalNanoseconds: number;
+  type: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -176,15 +184,23 @@ export function ensureGroup(node: FilterNode): FilterGroup {
 
 export interface MyQuery extends DataQuery {
   selection?: Selection;
-  filter?: FilterWire;
+  /** Stored as the UI-friendly FilterNode tree. Serialized to the binary-tree
+   *  wire format in applyTemplateVariables() before being sent to the backend. */
+  filter?: FilterNode;
+  /** Wire-format filter, populated by applyTemplateVariables(). Not persisted. */
+  filterWire?: FilterWire;
   groupBy?: GroupBy;
+  /** UI-friendly aggregation with human-readable interval string. */
   aggregation?: Aggregation;
+  /** Wire-format aggregation with intervalNanoseconds. Populated by
+   *  applyTemplateVariables(). Not persisted. */
+  aggregationWire?: AggregationWire;
 }
 
 export const DEFAULT_QUERY: Partial<MyQuery> = {
   selection: { type: 'messagePath', messagePath: '' },
-  filter: { type: 'device', op: 'eq', field: 'name', value: '' },
-  groupBy: { type: 'deviceName', deviceName: '' },
+  filter: newFilterLeaf(),
+  groupBy: { type: 'deviceId' },
 };
 
 /**

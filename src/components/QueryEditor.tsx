@@ -9,7 +9,7 @@ import {
   Selection,
   GroupBy,
   AggregationType,
-  FilterWire,
+  FilterNode,
   DEFAULT_QUERY,
 } from '../types';
 import { FilterEditor } from './FilterEditor';
@@ -22,24 +22,23 @@ const SELECTION_TYPE_OPTIONS: Array<SelectableValue<Selection['type']>> = [
 ];
 
 const GROUPBY_TYPE_OPTIONS: Array<SelectableValue<GroupBy['type']>> = [
-  { label: 'Device Name', value: 'deviceName' },
+  { label: 'Device', value: 'deviceId' },
   { label: 'Device Property', value: 'deviceProperty' },
 ];
 
-const AGGREGATION_TYPE_OPTIONS: Array<SelectableValue<AggregationType | '__auto__'>> = [
-  { label: 'Auto (last)', value: '__auto__', description: 'Let the backend choose based on panel resolution' },
-  { label: 'Count', value: 'count' },
-  { label: 'Sum', value: 'sum' },
-  { label: 'Min', value: 'min' },
-  { label: 'Max', value: 'max' },
-  { label: 'Average', value: 'average' },
+const AGGREGATION_TYPE_OPTIONS: Array<SelectableValue<AggregationType | '__none__'>> = [
+  { label: 'None', value: '__none__' },
   { label: 'Last', value: 'last' },
   { label: 'First', value: 'first' },
+  { label: 'Max', value: 'max' },
+  { label: 'Min', value: 'min' },
+  { label: 'Sum', value: 'sum' },
+  { label: 'Average', value: 'average' },
 ];
 
 export function QueryEditor({ query, onChange, onRunQuery }: Props) {
   const selection = query.selection ?? { type: 'messagePath', messagePath: '' };
-  const groupBy = query.groupBy ?? { type: 'deviceName', deviceName: '' };
+  const groupBy = query.groupBy ?? { type: 'deviceId' };
 
   // Validate message path on every change so we can show inline feedback.
   const rawMessagePath = selection.type === 'messagePath' ? selection.messagePath : '';
@@ -65,7 +64,11 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
       opt.value === 'messagePath'
         ? { type: 'messagePath', messagePath: '' }
         : { type: 'deviceProperty', key: '' };
-    onChange({ ...query, selection: newSel });
+    const updates: Partial<MyQuery> = { selection: newSel };
+    if (opt.value === 'deviceProperty') {
+      updates.groupBy = { type: 'deviceId' };
+    }
+    onChange({ ...query, ...updates });
   };
 
   const onMessagePathChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -95,17 +98,10 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
       return;
     }
     const newGB: GroupBy =
-      opt.value === 'deviceName'
-        ? { type: 'deviceName', deviceName: '' }
+      opt.value === 'deviceId'
+        ? { type: 'deviceId' }
         : { type: 'deviceProperty', key: '' };
     onChange({ ...query, groupBy: newGB });
-  };
-
-  const onGroupByDeviceNameChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (groupBy.type !== 'deviceName') {
-      return;
-    }
-    onChange({ ...query, groupBy: { ...groupBy, deviceName: e.target.value } });
   };
 
   const onGroupByKeyChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -115,28 +111,36 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     onChange({ ...query, groupBy: { ...groupBy, key: e.target.value } });
   };
 
-  // --- Aggregation handler ---
-  // "__auto__" means omit the aggregation field so the backend auto-computes it.
-  const currentAggType: AggregationType | '__auto__' = query.aggregation?.type ?? '__auto__';
+  // --- Aggregation handlers ---
+  const currentAggType: AggregationType | '__none__' = query.aggregation?.type ?? '__none__';
 
-  const onAggregationTypeChange = (opt: SelectableValue<AggregationType | '__auto__'>) => {
-    if (!opt.value || opt.value === '__auto__') {
+  const onAggregationTypeChange = (opt: SelectableValue<AggregationType | '__none__'>) => {
+    if (!opt.value || opt.value === '__none__') {
       onChange({ ...query, aggregation: undefined });
     } else {
       onChange({
         ...query,
         aggregation: {
-          intervalStart: '',
-          intervalNanoseconds: 0,
+          interval: query.aggregation?.interval ?? '',
           type: opt.value,
         },
       });
     }
   };
 
+  const onAggregationIntervalChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (!query.aggregation) {
+      return;
+    }
+    onChange({
+      ...query,
+      aggregation: { ...query.aggregation, interval: e.target.value },
+    });
+  };
+
   // --- Filter handler ---
 
-  const onFilterChange = (filter: FilterWire) => {
+  const onFilterChange = (filter: FilterNode) => {
     onChange({ ...query, filter });
   };
 
@@ -188,46 +192,37 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
       </InlineFieldRow>
 
-      {/* Group By */}
-      <InlineFieldRow>
-        <InlineField label="Group By" labelWidth={14} tooltip="How to group the results">
-          <Select
-            options={GROUPBY_TYPE_OPTIONS}
-            value={groupBy.type}
-            onChange={onGroupByTypeChange}
-            width={20}
-          />
-        </InlineField>
-
-        {groupBy.type === 'deviceName' && (
-          <InlineField label="Device Name" labelWidth={16} tooltip="Supports template variables (e.g. $device)" grow>
-            <Input
-              value={groupBy.deviceName}
-              onChange={onGroupByDeviceNameChange}
-              onBlur={runOnBlur}
-              placeholder="device-1 or $device"
+      {/* Group By — hidden when selecting device properties (always groups by device) */}
+      {selection.type === 'messagePath' && (
+        <InlineFieldRow>
+          <InlineField label="Group By" labelWidth={14} tooltip="How to group the results">
+            <Select
+              options={GROUPBY_TYPE_OPTIONS}
+              value={groupBy.type}
+              onChange={onGroupByTypeChange}
+              width={20}
             />
           </InlineField>
-        )}
 
-        {groupBy.type === 'deviceProperty' && (
-          <InlineField label="Property Key" labelWidth={14} grow>
-            <Input
-              value={groupBy.key}
-              onChange={onGroupByKeyChange}
-              onBlur={runOnBlur}
-              placeholder="propertyKey"
-            />
-          </InlineField>
-        )}
-      </InlineFieldRow>
+          {groupBy.type === 'deviceProperty' && (
+            <InlineField label="Property Key" labelWidth={14} grow>
+              <Input
+                value={groupBy.key}
+                onChange={onGroupByKeyChange}
+                onBlur={runOnBlur}
+                placeholder="propertyKey"
+              />
+            </InlineField>
+          )}
+        </InlineFieldRow>
+      )}
 
       {/* Aggregation */}
       <InlineFieldRow>
         <InlineField
           label="Aggregation"
           labelWidth={14}
-          tooltip="Downsampling method. 'Auto' uses the panel's resolution to pick an appropriate interval."
+          tooltip="Downsampling method applied to query results"
         >
           <Select
             options={AGGREGATION_TYPE_OPTIONS}
@@ -236,12 +231,24 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
             width={20}
           />
         </InlineField>
+
+        {query.aggregation && (
+          <InlineField label="Interval" labelWidth={10} tooltip="Bin interval for aggregation (e.g. 10s, 1m, 1h)">
+            <Input
+              value={query.aggregation.interval}
+              onChange={onAggregationIntervalChange}
+              onBlur={runOnBlur}
+              placeholder="10s, 1m, 1h"
+              width={16}
+            />
+          </InlineField>
+        )}
       </InlineFieldRow>
 
       {/* Filter */}
       <InlineField label="Filter" labelWidth={14} tooltip="Filter conditions applied to the query">
         <FilterEditor
-          filter={query.filter ?? (DEFAULT_QUERY.filter as FilterWire)}
+          filter={query.filter ?? DEFAULT_QUERY.filter!}
           onChange={onFilterChange}
         />
       </InlineField>

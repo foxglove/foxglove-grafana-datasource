@@ -1,8 +1,10 @@
-import { DataSourceInstanceSettings, CoreApp, ScopedVars } from '@grafana/data';
+import { DataSourceInstanceSettings, CoreApp, ScopedVars, rangeUtil } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv, TemplateSrv } from '@grafana/runtime';
 
 import { parseAndConvertMessagePath } from './messagePathSet';
-import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY, FilterWire } from './types';
+import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY, FilterWire, serializeFilterNode } from './types';
+
+const MS_TO_NS = 1_000_000;
 
 export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptions> {
   constructor(instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions>) {
@@ -24,7 +26,8 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
         result.selection = {
           ...result.selection,
           messagePath: rawPath,
-          messagePathSet: converted.ok ? converted.messagePathSet : undefined,
+          topic: converted.ok ? converted.parsed.topic : undefined,
+          selectorPath: converted.ok ? converted.parsed.selectorPath : undefined,
         };
       } else {
         result.selection = {
@@ -35,12 +38,7 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
     }
 
     if (result.groupBy) {
-      if (result.groupBy.type === 'deviceName') {
-        result.groupBy = {
-          ...result.groupBy,
-          deviceName: tpl.replace(result.groupBy.deviceName, scopedVars, 'csv'),
-        };
-      } else {
+      if (result.groupBy.type === 'deviceProperty') {
         result.groupBy = {
           ...result.groupBy,
           key: tpl.replace(result.groupBy.key, scopedVars),
@@ -49,7 +47,24 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
     }
 
     if (result.filter) {
-      result.filter = replaceFilterVars(result.filter, tpl, scopedVars);
+      const wire = serializeFilterNode(result.filter);
+      result.filterWire = replaceFilterVars(wire, tpl, scopedVars);
+    }
+
+    if (result.aggregation) {
+      const intervalStr = tpl.replace(result.aggregation.interval || '', scopedVars);
+      let intervalNs = 0;
+      if (intervalStr) {
+        try {
+          intervalNs = rangeUtil.intervalToMs(intervalStr) * MS_TO_NS;
+        } catch {
+          // Leave at 0 if the interval string is unparseable.
+        }
+      }
+      result.aggregationWire = {
+        intervalNanoseconds: intervalNs,
+        type: result.aggregation.type,
+      };
     }
 
     return result;
