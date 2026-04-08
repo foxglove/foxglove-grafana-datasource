@@ -34,6 +34,10 @@ const AGGREGATION_TYPE_OPTIONS: Array<ComboboxOption<AggregationType | '__none__
   { label: 'Min', value: 'min' },
   { label: 'Sum', value: 'sum' },
   { label: 'Average', value: 'average' },
+  { label: 'Median', value: 'median' },
+  { label: 'P50', value: 'p50' },
+  { label: 'P90', value: 'p90' },
+  { label: 'P95', value: 'p95' },
 ];
 
 export function QueryEditor({ query, onChange, onRunQuery }: Props) {
@@ -224,13 +228,20 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
         </InlineField>
 
         {query.aggregation && (
-          <InlineField label="Interval" labelWidth={10} tooltip="Bin interval for aggregation (e.g. 10s, 1m, 1h)">
+          <InlineField
+            label="Interval"
+            labelWidth={10}
+            tooltip="Bin interval for aggregation (e.g. 10s, 1m, 1h)"
+            invalid={!query.aggregation.interval}
+            error={!query.aggregation.interval ? 'Required' : undefined}
+          >
             <Input
               value={query.aggregation.interval}
               onChange={onAggregationIntervalChange}
               onBlur={runOnBlur}
               placeholder="10s, 1m, 1h"
               width={16}
+              invalid={!query.aggregation.interval}
             />
           </InlineField>
         )}

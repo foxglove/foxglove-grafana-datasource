@@ -17,6 +17,8 @@ export interface MessagePathSelection {
    */
   topic?: string;
   selectorPath?: Selector[];
+  /** The un-parsed message path, used by the backend as a label for the time series. */
+  messagePathString?: string;
 }
 
 export interface DevicePropertySelection {
@@ -41,7 +43,7 @@ export type GroupBy = DeviceIdGroupBy | DevicePropertyGroupBy;
 
 // --- Aggregation ---
 
-export type AggregationType = 'last' | 'first' | 'max' | 'min' | 'sum' | 'average';
+export type AggregationType = 'last' | 'first' | 'max' | 'min' | 'sum' | 'average' | 'median' | 'p50' | 'p90' | 'p95';
 
 export interface Aggregation {
   /** Human-readable interval string, e.g. "10s", "1m", "1h". */

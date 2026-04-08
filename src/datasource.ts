@@ -26,6 +26,7 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
         result.selection = {
           ...result.selection,
           messagePath: rawPath,
+          messagePathString: rawPath,
           topic: converted.ok ? converted.parsed.topic : undefined,
           selectorPath: converted.ok ? converted.parsed.selectorPath : undefined,
         };
@@ -76,6 +77,9 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
       return false;
     }
     if (query.selection.type === 'deviceProperty' && !query.selection.key) {
+      return false;
+    }
+    if (query.aggregation && !query.aggregation.interval) {
       return false;
     }
     return true;
