@@ -9,8 +9,8 @@
 
 import { Grammar, Parser } from "nearley";
 
-import { parseFunction } from "./fillVariablesInPath";
 import grammar from "./grammar";
+import { parseFunction } from "./parseFunction";
 import type { MessagePath, MessagePathFilter } from "./types";
 
 const grammarObj = Grammar.fromCompiled(grammar);
