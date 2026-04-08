@@ -104,6 +104,8 @@ function resolveFilter(
     };
   }
 
+  const resolvedValue = resolveValue(filter.op, tpl.replace(filter.value as string, scopedVars));
+
   if (filter.type === 'message') {
     const raw = tpl.replace(filter.messagePath, scopedVars);
     const parsed = parseAndConvertMessagePath(raw);
@@ -112,7 +114,7 @@ function resolveFilter(
       op: filter.op,
       topic: parsed.ok ? parsed.parsed.topic : '',
       selectorPath: parsed.ok ? parsed.parsed.selectorPath : [],
-      value: tpl.replace(filter.value, scopedVars),
+      value: resolvedValue,
     };
   }
 
@@ -120,8 +122,16 @@ function resolveFilter(
     type: filter.type,
     op: filter.op,
     field: tpl.replace(filter.field, scopedVars),
-    value: tpl.replace(filter.value, scopedVars),
+    value: resolvedValue,
   };
+}
+
+/** For 'in' ops, split comma-separated string into an array; otherwise pass through. */
+function resolveValue(op: string, raw: string): string | string[] {
+  if (op === 'in') {
+    return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  return raw;
 }
 
 /** A filter is "empty" when the user hasn't configured any meaningful conditions. */

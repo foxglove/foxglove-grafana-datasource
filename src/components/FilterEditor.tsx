@@ -31,6 +31,7 @@ const OP_OPTIONS: Array<ComboboxOption<FilterOp>> = [
   { label: '<', value: 'lt' },
   { label: '≤', value: 'lte' },
   { label: 'like', value: 'like' },
+  { label: 'in', value: 'in' },
 ];
 
 const OPERATOR_OPTIONS: Array<ComboboxOption<string>> = [
@@ -238,8 +239,8 @@ function FilterLeafEditor({ leaf, onChange, onRemove }: FilterLeafEditorProps) {
       <Input
         value={leaf.value}
         onChange={onValueChange}
-        placeholder="value"
-        width={16}
+        placeholder={leaf.op === 'in' ? 'a, b, c' : 'value'}
+        width={leaf.op === 'in' ? 24 : 16}
       />
       <IconButton name="times" size="sm" tooltip="Remove condition" onClick={onRemove} />
     </div>

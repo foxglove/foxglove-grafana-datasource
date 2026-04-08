@@ -67,7 +67,7 @@ export interface AggregationWire {
 // parses message paths, producing the final FilterWire sent to the API.
 // ---------------------------------------------------------------------------
 
-export type FilterOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like';
+export type FilterOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'in';
 
 export type LeafPredicateType = 'device' | 'message' | 'event' | 'recording';
 
@@ -105,7 +105,7 @@ export interface FilterWireFieldPredicate {
   type: FieldPredicateType;
   op: FilterOp;
   field: string;
-  value: string;
+  value: string | string[];
 }
 
 /** Serialized message predicate — still has the raw messagePath string. */
@@ -113,7 +113,7 @@ export interface FilterWireMessageRaw {
   type: 'message';
   op: FilterOp;
   messagePath: string;
-  value: string;
+  value: string | string[];
 }
 
 /** Resolved message predicate — messagePath parsed into topic + selectorPath. */
@@ -122,7 +122,7 @@ export interface FilterWireMessageResolved {
   op: FilterOp;
   topic: string;
   selectorPath: Selector[];
-  value: string;
+  value: string | string[];
 }
 
 /** Serialized wire format — output of serializeFilterNode. */
