@@ -7,20 +7,6 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-export type PrimitiveType =
-  | "bool"
-  | "int8"
-  | "uint8"
-  | "int16"
-  | "uint16"
-  | "int32"
-  | "uint32"
-  | "int64"
-  | "uint64"
-  | "float32"
-  | "float64"
-  | "string";
-
 export type MessagePathOperator = "==" | "!=" | "<" | "<=" | ">" | ">=";
 
 export type MessagePathNamePart = {
@@ -96,30 +82,3 @@ export type MessagePath = {
    */
   isFullySpecified: boolean;
 };
-
-// "Structure items" are a more useful version of `datatypes`. They can be
-// easily traversed to either validate message paths or generate message paths.
-export type MessagePathStructureItemMessage = {
-  structureType: "message";
-  nextByName: {
-    [key: string]: MessagePathStructureItem;
-  };
-  datatype: string;
-  deprecated?: boolean;
-};
-type MessagePathStructureItemArray = {
-  structureType: "array";
-  next: MessagePathStructureItem;
-  datatype: string;
-  deprecated?: boolean;
-};
-type MessagePathStructureItemPrimitive = {
-  structureType: "primitive";
-  primitiveType: PrimitiveType;
-  datatype: string;
-  deprecated?: boolean;
-};
-export type MessagePathStructureItem =
-  | MessagePathStructureItemMessage
-  | MessagePathStructureItemArray
-  | MessagePathStructureItemPrimitive;

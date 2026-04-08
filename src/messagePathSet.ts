@@ -8,18 +8,18 @@ import { parseMessagePath, type MessagePath, type MessagePathPart, type MessageP
 
 // --- Wire-format types matching the OpenAPI schema ---
 
-export interface FieldProjection {
+interface FieldProjection {
   kind: 'field';
   field: string;
 }
 
-export interface Slice {
+interface Slice {
   kind: 'slice';
   start?: number;
   end?: number;
 }
 
-export interface Condition {
+interface Condition {
   kind: 'condition';
   op: string;
   path: string[];
@@ -29,7 +29,7 @@ export interface Condition {
 export type Selector = FieldProjection | Slice | Condition;
 
 /** The parsed selection fields that get merged onto the selection object. */
-export interface ParsedMessagePathSelection {
+interface ParsedMessagePathSelection {
   topic: string;
   selectorPath: Selector[];
 }
@@ -99,7 +99,7 @@ function convertMessagePath(parsed: MessagePath): ParsedMessagePathSelection {
 
 // --- Public API ---
 
-export type ConvertResult =
+type ConvertResult =
   | { ok: true; parsed: ParsedMessagePathSelection }
   | { ok: false; error: string };
 
