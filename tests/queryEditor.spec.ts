@@ -3,24 +3,17 @@ import { test, expect } from '@grafana/plugin-e2e';
 test('smoke: should render query editor', async ({ panelEditPage, readProvisionedDataSource }) => {
   const ds = await readProvisionedDataSource({ fileName: 'datasources.yml' });
   await panelEditPage.datasource.set(ds.name);
-  await expect(panelEditPage.getQueryEditorRow('A').getByRole('textbox', { name: 'Device Name' })).toBeVisible();
+  await expect(panelEditPage.getQueryEditorRow('A').getByText('Selection')).toBeVisible();
 });
 
-test('should trigger new query when Constant field is changed', async ({
-  panelEditPage,
-  readProvisionedDataSource,
-}) => {
+test('should render group by section', async ({ panelEditPage, readProvisionedDataSource }) => {
   const ds = await readProvisionedDataSource({ fileName: 'datasources.yml' });
   await panelEditPage.datasource.set(ds.name);
-  const queryReq = panelEditPage.waitForQueryDataRequest();
-  await panelEditPage.getQueryEditorRow('A').getByRole('textbox', { name: 'Device Name' }).fill('device-123');
-  await expect(await queryReq).toBeTruthy();
+  await expect(panelEditPage.getQueryEditorRow('A').getByText('Group By')).toBeVisible();
 });
 
-test('data query should return values 10 and 20', async ({ panelEditPage, readProvisionedDataSource }) => {
+test('should render aggregation section', async ({ panelEditPage, readProvisionedDataSource }) => {
   const ds = await readProvisionedDataSource({ fileName: 'datasources.yml' });
   await panelEditPage.datasource.set(ds.name);
-  await panelEditPage.getQueryEditorRow('A').getByRole('textbox', { name: 'Device Name' }).fill('device-123');
-  await panelEditPage.setVisualization('Table');
-  await expect(panelEditPage.refreshPanel()).toBeOK();
+  await expect(panelEditPage.getQueryEditorRow('A').getByText('Aggregation')).toBeVisible();
 });

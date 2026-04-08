@@ -1,71 +1,257 @@
-import React, { ChangeEvent } from 'react';
-import { InlineField, Input, Stack, DateTimePicker } from '@grafana/ui';
-import { QueryEditorProps, dateTime, DateTime } from '@grafana/data';
+import React, { ChangeEvent, useMemo } from 'react';
+import { Combobox, type ComboboxOption, InlineField, InlineFieldRow, Input, Stack } from '@grafana/ui';
+import { QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
-import { MyDataSourceOptions, MyQuery } from '../types';
+import { parseAndConvertMessagePath } from '../messagePathSet';
+import {
+  MyDataSourceOptions,
+  MyQuery,
+  Selection,
+  GroupBy,
+  AggregationType,
+  FilterNode,
+  DEFAULT_QUERY,
+} from '../types';
+import { FilterEditor } from './FilterEditor';
 
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
 
-export function QueryEditor({ query, onChange, onRunQuery, range }: Props) {
-  const onDeviceNamesChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, deviceName: event.target.value });
-    onRunQuery();
+const SELECTION_TYPE_OPTIONS: Array<ComboboxOption<Selection['type']>> = [
+  { label: 'Message Path', value: 'messagePath' },
+  { label: 'Device Property', value: 'deviceProperty' },
+];
+
+const GROUPBY_TYPE_OPTIONS: Array<ComboboxOption<GroupBy['type']>> = [
+  { label: 'Device', value: 'deviceId' },
+  { label: 'Device Property', value: 'deviceProperty' },
+];
+
+const AGGREGATION_TYPE_OPTIONS: Array<ComboboxOption<AggregationType | '__none__'>> = [
+  { label: 'None', value: '__none__' },
+  { label: 'Last', value: 'last' },
+  { label: 'First', value: 'first' },
+  { label: 'Max', value: 'max' },
+  { label: 'Min', value: 'min' },
+  { label: 'Sum', value: 'sum' },
+  { label: 'Average', value: 'average' },
+  { label: 'Median', value: 'median' },
+  { label: 'P50', value: 'p50' },
+  { label: 'P90', value: 'p90' },
+  { label: 'P95', value: 'p95' },
+];
+
+export function QueryEditor({ query, onChange, onRunQuery }: Props) {
+  const selection = query.selection ?? { type: 'messagePath', messagePath: '' };
+  const groupBy = query.groupBy ?? { type: 'deviceId' };
+
+  const rawMessagePath = selection.type === 'messagePath' ? selection.messagePath : '';
+  const messagePathError = useMemo(() => {
+    if (!rawMessagePath) {
+      return undefined;
+    }
+    if (rawMessagePath.includes('$')) {
+      return undefined;
+    }
+    const result = parseAndConvertMessagePath(rawMessagePath);
+    return result.ok ? undefined : result.error;
+  }, [rawMessagePath]);
+
+  // --- Selection handlers ---
+
+  const onSelectionTypeChange = (opt: ComboboxOption<Selection['type']>) => {
+    const newSel: Selection =
+      opt.value === 'messagePath'
+        ? { type: 'messagePath', messagePath: '' }
+        : { type: 'deviceProperty', key: '' };
+    const updates: Partial<MyQuery> = { selection: newSel };
+    if (opt.value === 'deviceProperty') {
+      updates.groupBy = { type: 'deviceId' };
+    }
+    onChange({ ...query, ...updates });
   };
 
-  const onMessagePathsChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, topics: event.target.value });
+  const onMessagePathChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (selection.type !== 'messagePath') {
+      return;
+    }
+    onChange({
+      ...query,
+      selection: { ...selection, messagePath: e.target.value },
+    });
   };
 
-  const onStartTimeChange = (value?: DateTime) => {
-    // Convert to RFC3339 format (ISO 8601)
-    const rfc3339 = value ? value.toISOString() : '';
-    onChange({ ...query, start: rfc3339 });
+  const onSelectionKeyChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (selection.type !== 'deviceProperty') {
+      return;
+    }
+    onChange({
+      ...query,
+      selection: { ...selection, key: e.target.value },
+    });
   };
 
-  const onEndTimeChange = (value?: DateTime) => {
-    // Convert to RFC3339 format (ISO 8601)
-    const rfc3339 = value ? value.toISOString() : '';
-    onChange({ ...query, end: rfc3339 });
+  // --- GroupBy handlers ---
+
+  const onGroupByTypeChange = (opt: ComboboxOption<GroupBy['type']>) => {
+    const newGB: GroupBy =
+      opt.value === 'deviceId'
+        ? { type: 'deviceId' }
+        : { type: 'deviceProperty', key: '' };
+    onChange({ ...query, groupBy: newGB });
   };
 
-  // Parse existing RFC3339 strings back to dateTime objects for the picker
-  const startTime: DateTime | null = query.start ? dateTime(query.start) : null;
-  const endTime: DateTime | null = query.end ? dateTime(query.end) : null;
+  const onGroupByKeyChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (groupBy.type !== 'deviceProperty') {
+      return;
+    }
+    onChange({ ...query, groupBy: { ...groupBy, key: e.target.value } });
+  };
 
-  const { deviceName, topics } = query;
+  // --- Aggregation handlers ---
+  const currentAggType: AggregationType | '__none__' = query.aggregation?.type ?? '__none__';
+
+  const onAggregationTypeChange = (opt: ComboboxOption<AggregationType | '__none__'>) => {
+    if (opt.value === '__none__') {
+      onChange({ ...query, aggregation: undefined });
+    } else {
+      onChange({
+        ...query,
+        aggregation: {
+          interval: query.aggregation?.interval ?? '',
+          type: opt.value,
+        },
+      });
+    }
+  };
+
+  const onAggregationIntervalChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (!query.aggregation) {
+      return;
+    }
+    onChange({
+      ...query,
+      aggregation: { ...query.aggregation, interval: e.target.value },
+    });
+  };
+
+  // --- Filter handler ---
+
+  const onFilterChange = (filter: FilterNode) => {
+    onChange({ ...query, filter });
+  };
+
+  const runOnBlur = () => onRunQuery();
 
   return (
-    <Stack gap={2} direction="column">
-      <InlineField label="Device Names" labelWidth={14} required tooltip="Foxglove device name(s). Supports Grafana template variables (e.g. $device). Multi-value variables or comma-separated names will query each device separately." grow>
-        <Input
-          id="query-editor-device-name"
-          onChange={onDeviceNamesChange}
-          value={deviceName || ''}
-          placeholder="device-1 or $device"
-          width={30}
-        />
-      </InlineField>
-      <InlineField label="Start Time" labelWidth={14} tooltip="Start time. Leave empty to use dashboard time range." grow>
-        <DateTimePicker
-          date={startTime ?? range?.from}
-          onChange={onStartTimeChange}
-          showSeconds={true}
-        />
-      </InlineField>
-      <InlineField label="End Time" labelWidth={14} tooltip="End time. Leave empty to use dashboard time range." grow>
-        <DateTimePicker
-          date={endTime ?? range?.to}
-          onChange={onEndTimeChange}
-          showSeconds={true}
-        />
-      </InlineField>
-      <InlineField label="Message Paths" labelWidth={14} tooltip="Comma-separated list of message paths to floating-point fields. See https://docs.foxglove.dev/docs/visualization/message-path-syntax" grow>
-        <Input
-          id="query-editor-topics"
-          onChange={onMessagePathsChange}
-          value={topics || ''}
-          placeholder="topic1, topic2, topic3"
-          width={30}
+    <Stack gap={1} direction="column">
+      {/* Selection */}
+      <InlineFieldRow>
+        <InlineField label="Selection" labelWidth={14} tooltip="What data to select">
+          <Combobox
+            options={SELECTION_TYPE_OPTIONS}
+            value={selection.type}
+            onChange={onSelectionTypeChange}
+            width={20}
+          />
+        </InlineField>
+
+        {selection.type === 'messagePath' && (
+          <InlineField
+            label="Message Path"
+            labelWidth={16}
+            tooltip="e.g. /imu.linear_acceleration.x"
+            grow
+            invalid={!!messagePathError}
+            error={messagePathError}
+          >
+            <Input
+              value={selection.messagePath}
+              onChange={onMessagePathChange}
+              onBlur={runOnBlur}
+              placeholder="/topic.field.subfield"
+              invalid={!!messagePathError}
+            />
+          </InlineField>
+        )}
+
+        {selection.type === 'deviceProperty' && (
+          <InlineField label="Property Key" labelWidth={14} grow>
+            <Input
+              value={selection.key}
+              onChange={onSelectionKeyChange}
+              onBlur={runOnBlur}
+              placeholder="propertyKey"
+            />
+          </InlineField>
+        )}
+
+      </InlineFieldRow>
+
+      {/* Group By — hidden when selecting device properties (always groups by device) */}
+      {selection.type === 'messagePath' && (
+        <InlineFieldRow>
+          <InlineField label="Group By" labelWidth={14} tooltip="How to group the results">
+            <Combobox
+              options={GROUPBY_TYPE_OPTIONS}
+              value={groupBy.type}
+              onChange={onGroupByTypeChange}
+              width={20}
+            />
+          </InlineField>
+
+          {groupBy.type === 'deviceProperty' && (
+            <InlineField label="Property Key" labelWidth={14} grow>
+              <Input
+                value={groupBy.key}
+                onChange={onGroupByKeyChange}
+                onBlur={runOnBlur}
+                placeholder="propertyKey"
+              />
+            </InlineField>
+          )}
+        </InlineFieldRow>
+      )}
+
+      {/* Aggregation */}
+      <InlineFieldRow>
+        <InlineField
+          label="Aggregation"
+          labelWidth={14}
+          tooltip="Downsampling method applied to query results"
+        >
+          <Combobox
+            options={AGGREGATION_TYPE_OPTIONS}
+            value={currentAggType}
+            onChange={onAggregationTypeChange}
+            width={20}
+          />
+        </InlineField>
+
+        {query.aggregation && (
+          <InlineField
+            label="Interval"
+            labelWidth={10}
+            tooltip="Bin interval for aggregation (e.g. 10s, 1m, 1h)"
+            invalid={!query.aggregation.interval}
+            error={!query.aggregation.interval ? 'Required' : undefined}
+          >
+            <Input
+              value={query.aggregation.interval}
+              onChange={onAggregationIntervalChange}
+              onBlur={runOnBlur}
+              placeholder="10s, 1m, 1h"
+              width={16}
+              invalid={!query.aggregation.interval}
+            />
+          </InlineField>
+        )}
+      </InlineFieldRow>
+
+      {/* Filter */}
+      <InlineField label="Filter" labelWidth={14} tooltip="Filter conditions applied to the query">
+        <FilterEditor
+          filter={query.filter ?? DEFAULT_QUERY.filter!}
+          onChange={onFilterChange}
         />
       </InlineField>
     </Stack>

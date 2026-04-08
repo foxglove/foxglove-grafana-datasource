@@ -33,6 +33,7 @@ export default defineConfig([
       'playwright/.auth/',
       '**/.idea',
       '**/.eslintcache',
+      'src/message-path/grammar.js',
     ],
   },
   ...baseConfig,
