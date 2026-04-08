@@ -9,7 +9,6 @@ import (
 
 type PluginSettings struct {
 	BaseURL   string                `json:"baseUrl"`
-	Path      string                `json:"path"` // Legacy; prefer BaseURL.
 	ProjectID string                `json:"projectId"`
 	SiteID    string                `json:"siteId"`
 	Secrets   *SecretPluginSettings `json:"-"`

@@ -41,9 +41,6 @@ func getAPIBaseURL(config *models.PluginSettings) string {
 		if base := strings.TrimSpace(config.BaseURL); base != "" {
 			return strings.TrimRight(base, "/")
 		}
-		if base := strings.TrimSpace(config.Path); base != "" {
-			return strings.TrimRight(base, "/")
-		}
 	}
 	return defaultAPIBaseURL
 }
