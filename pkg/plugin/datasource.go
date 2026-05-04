@@ -149,7 +149,7 @@ func (d *Datasource) fetchGrafanaQuery(
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", config.Secrets.ApiKey))
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 0}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("API request failed: %w", err)
