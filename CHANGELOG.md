@@ -4,11 +4,7 @@
 
 ### Added
 
-- Optional **Query HTTP timeout** datasource setting (`queryHttpTimeoutSeconds` in `jsonData`): maximum duration in seconds for each HTTP request used during a query (the Foxglove API POST and the follow-up download). Leave unset or set to `0` for no client-side limit.
-
-### Changed
-
-- Query HTTP calls no longer use a fixed plugin-side timeout by default. When the timeout setting is omitted or zero, duration is bounded only by Grafana’s datasource/query timeout, the request context, and infrastructure (for example load balancers and the Foxglove API).
+- Optional **Query timeout** datasource setting: The maximum duration in seconds for each HTTP request used during a query (the Foxglove API POST and the follow-up download). Leave unset or set to `0` for no client-side limit.
 
 ## v0.0.3
 
