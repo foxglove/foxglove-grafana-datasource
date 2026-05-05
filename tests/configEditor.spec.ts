@@ -7,6 +7,7 @@ test('smoke: should render config editor', async ({ createDataSourceConfigPage, 
   await expect(page.getByLabel('API Base URL')).toBeVisible();
   await expect(page.getByLabel('Project ID')).toBeVisible();
   await expect(page.getByLabel('Site ID')).toBeVisible();
+  await expect(page.getByLabel('Query Timeout (seconds)')).toBeVisible();
 });
 
 test('"Save & test" should be successful when configuration is valid', async ({
