@@ -30,6 +30,27 @@ export function ConfigEditor(props: Props) {
     });
   };
 
+  const onQueryHttpTimeoutSecondsChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const raw = event.target.value.trim();
+    if (raw === '') {
+      const next = { ...jsonData };
+      delete next.queryHttpTimeoutSeconds;
+      onOptionsChange({
+        ...options,
+        jsonData: next,
+      });
+      return;
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+      return;
+    }
+    onOptionsChange({
+      ...options,
+      jsonData: { ...jsonData, queryHttpTimeoutSeconds: n },
+    });
+  };
+
   const onAPIKeyChange = (event: ChangeEvent<HTMLInputElement>) => {
     onOptionsChange({
       ...options,
@@ -88,6 +109,23 @@ export function ConfigEditor(props: Props) {
           onChange={onSiteIdChange}
           value={jsonData.siteId ?? ''}
           placeholder="site_..."
+          width={40}
+        />
+      </InlineField>
+      <InlineField
+        label="Query HTTP timeout"
+        labelWidth={14}
+        tooltip="Optional per-request timeout in seconds for query HTTP calls (POST + download). Leave empty or 0 for no client-side limit; Grafana query timeout and infrastructure still apply."
+      >
+        <Input
+          id="config-editor-query-http-timeout"
+          type="number"
+          min={0}
+          onChange={onQueryHttpTimeoutSecondsChange}
+          value={
+            jsonData.queryHttpTimeoutSeconds !== undefined ? String(jsonData.queryHttpTimeoutSeconds) : ''
+          }
+          placeholder="0 = no limit"
           width={40}
         />
       </InlineField>

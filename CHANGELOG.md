@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.0.4
+
+### Changed
+
+- Removed the plugin-internal timeout for querying the foxglove primary site backend.
+  Queries are now limited only by load balancer timeouts
+
+## v0.0.3
+
+This release adds a query builder and support for displaying device property values.
+
+The new query builder supports:
+
+- Selecting either topic data via [Message path](https://docs.foxglove.dev/docs/visualization/message-path-syntax) or [Device Property](https://docs.foxglove.dev/docs/data/devices#properties) data by key.
+- Grouping results by device or by device property value.
+- Filtering using predicates on:
+  - Messsage data
+  - Device ID, name, and custom property values
+  - Event ID and custom property values
+  - Recording ID, filename and metadata
+- Aggregation using median, average, first, last, sum, count, and percentile methods.
+
+## v0.0.2
+
+### Fixed
+
+- Fixed a bug where quoted topic or field names were not respected in message paths.
+
 ## v0.0.1
 
 Initial release.
