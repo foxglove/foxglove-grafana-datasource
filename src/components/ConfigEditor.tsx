@@ -35,6 +35,7 @@ export function ConfigEditor(props: Props) {
 
   const onQueryHttpTimeoutSecondsChange = (event: ChangeEvent<HTMLInputElement>) => {
     const raw = event.target.value.trim();
+    // Empty implies an intentional reset, remove the key.
     if (raw === '') {
       const next = { ...jsonData };
       delete next.queryHttpTimeoutSeconds;
@@ -45,6 +46,7 @@ export function ConfigEditor(props: Props) {
       return;
     }
     const n = Number(raw);
+    // If the input is not valid, do not update the value.
     if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
       return;
     }
