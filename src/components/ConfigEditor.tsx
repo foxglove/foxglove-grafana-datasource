@@ -5,6 +5,9 @@ import { MyDataSourceOptions, MySecureJsonData } from '../types';
 
 interface Props extends DataSourcePluginOptionsEditorProps<MyDataSourceOptions, MySecureJsonData> {}
 
+/** Grafana `InlineField` label width (theme units); 14 wraps multi-word labels awkwardly. */
+const configLabelWidth = 22;
+
 export function ConfigEditor(props: Props) {
   const { onOptionsChange, options } = props;
   const { jsonData, secureJsonFields, secureJsonData } = options;
@@ -68,7 +71,7 @@ export function ConfigEditor(props: Props) {
 
   return (
     <>
-      <InlineField label="API Base URL" labelWidth={14} tooltip="Optional: Override the default Foxglove API base URL">
+      <InlineField label="API Base URL" labelWidth={configLabelWidth} tooltip="Optional: Override the default Foxglove API base URL">
         <Input
           id="config-editor-base-url"
           onChange={onBaseUrlChange}
@@ -79,7 +82,7 @@ export function ConfigEditor(props: Props) {
       </InlineField>
       <InlineField
         label="API Key"
-        labelWidth={14}
+        labelWidth={configLabelWidth}
         required
         tooltip="Stored securely and only sent to the backend. For provisioning/CI you can also set the FOXGLOVE_API_KEY environment variable."
       >
@@ -94,7 +97,7 @@ export function ConfigEditor(props: Props) {
           onChange={onAPIKeyChange}
         />
       </InlineField>
-      <InlineField label="Project ID" labelWidth={14} required tooltip="The Foxglove project ID to scope queries to">
+      <InlineField label="Project ID" labelWidth={configLabelWidth} required tooltip="The Foxglove project ID to scope queries to">
         <Input
           id="config-editor-project-id"
           onChange={onProjectIdChange}
@@ -103,7 +106,7 @@ export function ConfigEditor(props: Props) {
           width={40}
         />
       </InlineField>
-      <InlineField label="Site ID" labelWidth={14} required tooltip="The primary Foxglove site ID to search">
+      <InlineField label="Site ID" labelWidth={configLabelWidth} required tooltip="The primary Foxglove site ID to search">
         <Input
           id="config-editor-site-id"
           onChange={onSiteIdChange}
@@ -113,9 +116,9 @@ export function ConfigEditor(props: Props) {
         />
       </InlineField>
       <InlineField
-        label="Query HTTP timeout"
-        labelWidth={14}
-        tooltip="Optional per-request timeout in seconds for query HTTP calls (POST + download). Leave empty or 0 for no client-side limit; Grafana query timeout and infrastructure still apply."
+        label="Query Timeout (seconds)"
+        labelWidth={configLabelWidth}
+        tooltip="Optional per-request limit for each query HTTP call (Foxglove API POST and frame download). Empty or 0 means no plugin-side limit; Grafana’s query timeout and your infrastructure still apply."
       >
         <Input
           id="config-editor-query-http-timeout"
