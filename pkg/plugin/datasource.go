@@ -47,24 +47,26 @@ func getAPIBaseURL(config *models.PluginSettings) string {
 
 // queryModel represents the per-query JSON sent from the frontend.
 // The backend treats selection, filter, groupBy, and aggregation as opaque
-// JSON objects that are forwarded directly to the Foxglove API.
+// JSON forwarded to the Foxglove API; granularityWire is translated to filterBinNanos in the POST body.
 type queryModel struct {
 	Selection       json.RawMessage `json:"selection"`
 	FilterWire      json.RawMessage `json:"filterWire"`
 	GroupBy         json.RawMessage `json:"groupBy"`
 	AggregationWire json.RawMessage `json:"aggregationWire,omitempty"`
+	GranularityWire json.RawMessage `json:"granularityWire,omitempty"`
 }
 
-// grafanaQueryRequest is the body POSTed to /v1/data/grafana-query.
+// grafanaQueryRequest is the body POSTed to /v1/data/grafana-plugin-query.
 type grafanaQueryRequest struct {
-	ProjectID   string          `json:"projectId"`
-	SiteID      string          `json:"siteId"`
-	Start       string          `json:"start"`
-	End         string          `json:"end"`
-	Selection   json.RawMessage `json:"selection"`
-	Filter      json.RawMessage `json:"filter,omitempty"`
-	GroupBy     json.RawMessage `json:"groupBy"`
-	Aggregation json.RawMessage `json:"aggregation,omitempty"`
+	ProjectID      string          `json:"projectId"`
+	SiteID         string          `json:"siteId"`
+	Start          string          `json:"start"`
+	End            string          `json:"end"`
+	Selection      json.RawMessage `json:"selection"`
+	Filter         json.RawMessage `json:"filter,omitempty"`
+	GroupBy        json.RawMessage `json:"groupBy"`
+	Aggregation    json.RawMessage `json:"aggregation,omitempty"`
+	FilterBinNanos *int64          `json:"filterBinNanos,omitempty"`
 }
 
 type grafanaQueryResponse struct {
@@ -118,7 +120,12 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 		GroupBy:   qm.GroupBy,
 	}
 
-	apiReq.Aggregation = qm.AggregationWire
+	if aggregationWireHasPositiveInterval(qm.AggregationWire) {
+		apiReq.Aggregation = qm.AggregationWire
+	}
+	if bn := filterBinNanosFromGranularityWire(qm.GranularityWire); bn != nil {
+		apiReq.FilterBinNanos = bn
+	}
 
 	frames, err := d.fetchGrafanaQuery(ctx, config, apiReq)
 	if err != nil {
@@ -126,6 +133,35 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 	}
 
 	return backend.DataResponse{Frames: frames}
+}
+
+// aggregationWireHasPositiveInterval is true only when the wire unmarshals
+// to intervalNanoseconds > 0 (the Foxglove API rejects zero).
+func aggregationWireHasPositiveInterval(raw json.RawMessage) bool {
+	if len(raw) == 0 || string(raw) == "null" {
+		return false
+	}
+	var w struct {
+		IntervalNanoseconds int64 `json:"intervalNanoseconds"`
+	}
+	if err := json.Unmarshal(raw, &w); err != nil {
+		return false
+	}
+	return w.IntervalNanoseconds > 0
+}
+
+func filterBinNanosFromGranularityWire(raw json.RawMessage) *int64 {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var w struct {
+		IntervalNanoseconds int64 `json:"intervalNanoseconds"`
+	}
+	if err := json.Unmarshal(raw, &w); err != nil || w.IntervalNanoseconds <= 0 {
+		return nil
+	}
+	v := w.IntervalNanoseconds
+	return &v
 }
 
 // fetchGrafanaQuery POSTs to /v1/data/grafana-query, follows the signed link,

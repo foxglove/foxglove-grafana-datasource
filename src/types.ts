@@ -57,6 +57,11 @@ export interface AggregationWire {
   type: string;
 }
 
+/** Wire format for time granularity of filter evaluation (interval only). */
+export interface GranularityWire {
+  intervalNanoseconds: number;
+}
+
 // ---------------------------------------------------------------------------
 // Filter types
 //
@@ -207,6 +212,10 @@ export interface MyQuery extends DataQuery {
   /** Wire-format aggregation with intervalNanoseconds. Populated by
    *  applyTemplateVariables(). Not persisted. */
   aggregationWire?: AggregationWire;
+  /** Human-readable time interval for filter condition granularity (e.g. "10s", "1m"). */
+  granularity?: string;
+  /** Wire-format granularity. Populated by applyTemplateVariables(). Not persisted. */
+  granularityWire?: GranularityWire;
 }
 
 export const DEFAULT_QUERY: Partial<MyQuery> = {

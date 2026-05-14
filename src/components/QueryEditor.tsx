@@ -140,6 +140,10 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     onChange({ ...query, filter });
   };
 
+  const onGranularityChange = (e: ChangeEvent<HTMLInputElement>) => {
+    onChange({ ...query, granularity: e.target.value });
+  };
+
   const runOnBlur = () => onRunQuery();
 
   return (
@@ -245,6 +249,23 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
             />
           </InlineField>
         )}
+      </InlineFieldRow>
+
+      <InlineFieldRow>
+        <InlineField
+          label="Granularity"
+          labelWidth={14}
+          grow
+          tooltip="Time step used when evaluating filter conditions over the query range (e.g. 10s, 1m, 1h). Leave empty for server default."
+        >
+          <Input
+            value={query.granularity ?? ''}
+            onChange={onGranularityChange}
+            onBlur={runOnBlur}
+            placeholder="10s, 1m, 1h (optional)"
+            width={24}
+          />
+        </InlineField>
       </InlineFieldRow>
 
       {/* Filter */}
