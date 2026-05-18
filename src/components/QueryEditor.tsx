@@ -241,7 +241,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
               value={query.aggregation.interval}
               onChange={onAggregationIntervalChange}
               onBlur={runOnBlur}
-              placeholder="Empty: range ÷ max data points"
+              placeholder="e.g. 10s, 1m, 1h"
               width={16}
             />
           </InlineField>
@@ -259,7 +259,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
             value={query.granularity ?? ''}
             onChange={onGranularityChange}
             onBlur={runOnBlur}
-            placeholder="Empty: range ÷ max data points"
+            placeholder="e.g. 10s, 1m, 1h"
             width={24}
           />
         </InlineField>
