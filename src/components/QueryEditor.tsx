@@ -256,13 +256,13 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
           label="Granularity"
           labelWidth={14}
           grow
-          tooltip="Time step used when evaluating filter conditions over the query range (e.g. 10s, 1m, 1h). Leave empty for server default."
+          tooltip="Time step for evaluating filter conditions (e.g. 10s, 1m). When empty, defaults to (dashboard time range  / Max data points)."
         >
           <Input
             value={query.granularity ?? ''}
             onChange={onGranularityChange}
             onBlur={runOnBlur}
-            placeholder="10s, 1m, 1h (optional)"
+            placeholder="Empty: range ÷ max data points"
             width={24}
           />
         </InlineField>

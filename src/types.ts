@@ -212,7 +212,8 @@ export interface MyQuery extends DataQuery {
   /** Wire-format aggregation with intervalNanoseconds. Populated by
    *  applyTemplateVariables(). Not persisted. */
   aggregationWire?: AggregationWire;
-  /** Human-readable time interval for filter condition granularity (e.g. "10s", "1m"). */
+  /** Human-readable time interval for filter condition granularity (e.g. "10s", "1m").
+   *  When omitted, the plugin backend sets filterBinNanos to range duration ÷ Max data points. */
   granularity?: string;
   /** Wire-format granularity. Populated by applyTemplateVariables(). Not persisted. */
   granularityWire?: GranularityWire;

@@ -123,9 +123,7 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 	if aggregationWireHasPositiveInterval(qm.AggregationWire) {
 		apiReq.Aggregation = qm.AggregationWire
 	}
-	if bn := filterBinNanosFromGranularityWire(qm.GranularityWire); bn != nil {
-		apiReq.FilterBinNanos = bn
-	}
+	apiReq.FilterBinNanos = resolveFilterBinNanos(qm.GranularityWire, query.TimeRange, query.MaxDataPoints)
 
 	frames, err := d.fetchGrafanaQuery(ctx, config, apiReq)
 	if err != nil {
@@ -148,6 +146,41 @@ func aggregationWireHasPositiveInterval(raw json.RawMessage) bool {
 		return false
 	}
 	return w.IntervalNanoseconds > 0
+}
+
+// defaultMaxDataPoints matches Grafana's typical fallback when the panel does not
+// send an explicit max data points value.
+const defaultMaxDataPoints int64 = 1000
+
+func resolveFilterBinNanos(granularityWire json.RawMessage, timeRange backend.TimeRange, maxDataPoints int64) *int64 {
+	if bn := filterBinNanosFromGranularityWire(granularityWire); bn != nil {
+		return bn
+	}
+	return defaultFilterBinNanosFromQuery(timeRange, maxDataPoints)
+}
+
+func defaultFilterBinNanosFromQuery(timeRange backend.TimeRange, maxDataPoints int64) *int64 {
+	from := timeRange.From
+	to := timeRange.To
+	if from.IsZero() || to.IsZero() || !to.After(from) {
+		return nil
+	}
+
+	points := maxDataPoints
+	if points <= 0 {
+		points = defaultMaxDataPoints
+	}
+
+	durationNs := to.Sub(from).Nanoseconds()
+	if durationNs <= 0 {
+		return nil
+	}
+
+	bn := durationNs / points
+	if bn < 1 {
+		bn = 1
+	}
+	return &bn
 }
 
 func filterBinNanosFromGranularityWire(raw json.RawMessage) *int64 {

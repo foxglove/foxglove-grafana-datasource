@@ -149,6 +149,45 @@ func TestFilterBinNanosFromGranularityWire(t *testing.T) {
 	}
 }
 
+func TestDefaultFilterBinNanosFromQuery(t *testing.T) {
+	from := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := from.Add(10 * time.Second)
+	tr := backend.TimeRange{From: from, To: to}
+
+	bn := defaultFilterBinNanosFromQuery(tr, 1000)
+	if bn == nil || *bn != 10_000_000 {
+		t.Fatalf("want 10ms (10_000_000 ns), got %v", bn)
+	}
+
+	// Zero max data points uses defaultMaxDataPoints.
+	bn = defaultFilterBinNanosFromQuery(tr, 0)
+	if bn == nil || *bn != 10_000_000 {
+		t.Fatalf("zero maxDataPoints: want 10_000_000 ns, got %v", bn)
+	}
+
+	// Invalid range yields nil.
+	if defaultFilterBinNanosFromQuery(backend.TimeRange{From: to, To: from}, 100) != nil {
+		t.Fatal("inverted range should yield nil")
+	}
+}
+
+func TestResolveFilterBinNanos(t *testing.T) {
+	from := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := from.Add(time.Second)
+	tr := backend.TimeRange{From: from, To: to}
+
+	wire := json.RawMessage(`{"intervalNanoseconds":500000000}`)
+	bn := resolveFilterBinNanos(wire, tr, 100)
+	if bn == nil || *bn != 500_000_000 {
+		t.Fatalf("user granularity should win, got %v", bn)
+	}
+
+	bn = resolveFilterBinNanos(nil, tr, 100)
+	if bn == nil || *bn != 10_000_000 {
+		t.Fatalf("default should be 1s/100 = 10ms, got %v", bn)
+	}
+}
+
 func TestGrafanaQueryRequestMarshal_FilterBinNanos(t *testing.T) {
 	bn := int64(500)
 	req := grafanaQueryRequest{
