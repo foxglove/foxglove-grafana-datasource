@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.0.5
+
+### Added
+
+- Optional **Granularity**: Controls the date bin width of filter evaluation results. This now defaults to
+  (dashboard time range / max data points), or roughly one bin per pixel. Before this change, it would
+  filter granularity would be set to the aggregation interval if set, but this is no longer true.
+
+### Changed
+
+- Aggregation interval is now optional. It defaults to (dashboard time range / max data points), or roughly one bin per pixel.
+
 ## v0.0.4
 
 ### Added
