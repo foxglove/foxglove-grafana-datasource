@@ -120,8 +120,8 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 		GroupBy:   qm.GroupBy,
 	}
 
-	if aggregationWireHasPositiveInterval(qm.AggregationWire) {
-		apiReq.Aggregation = qm.AggregationWire
+	if agg := resolveAggregation(qm.AggregationWire, query.TimeRange, query.MaxDataPoints); len(agg) > 0 {
+		apiReq.Aggregation = agg
 	}
 	apiReq.FilterBinNanos = resolveFilterBinNanos(qm.GranularityWire, query.TimeRange, query.MaxDataPoints)
 
@@ -133,33 +133,52 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 	return backend.DataResponse{Frames: frames}
 }
 
-// aggregationWireHasPositiveInterval is true only when the wire unmarshals
-// to intervalNanoseconds > 0 (the Foxglove API rejects zero).
-func aggregationWireHasPositiveInterval(raw json.RawMessage) bool {
-	if len(raw) == 0 || string(raw) == "null" {
-		return false
-	}
-	var w struct {
-		IntervalNanoseconds int64 `json:"intervalNanoseconds"`
-	}
-	if err := json.Unmarshal(raw, &w); err != nil {
-		return false
-	}
-	return w.IntervalNanoseconds > 0
-}
-
 // defaultMaxDataPoints matches Grafana's typical fallback when the panel does not
 // send an explicit max data points value.
 const defaultMaxDataPoints int64 = 1000
+
+// resolveAggregation builds the Foxglove API aggregation object from aggregationWire.
+// When intervalNanoseconds is zero (empty UI interval), it defaults to range ÷ max data points.
+func resolveAggregation(wire json.RawMessage, timeRange backend.TimeRange, maxDataPoints int64) json.RawMessage {
+	if len(wire) == 0 || string(wire) == "null" {
+		return nil
+	}
+	var w struct {
+		IntervalNanoseconds int64  `json:"intervalNanoseconds"`
+		Type                string `json:"type"`
+	}
+	if err := json.Unmarshal(wire, &w); err != nil || w.Type == "" {
+		return nil
+	}
+	intervalNs := w.IntervalNanoseconds
+	if intervalNs <= 0 {
+		if def := defaultIntervalNanosecondsFromQuery(timeRange, maxDataPoints); def != nil {
+			intervalNs = *def
+		} else {
+			return nil
+		}
+	}
+	out, err := json.Marshal(struct {
+		IntervalNanoseconds int64  `json:"intervalNanoseconds"`
+		Type                string `json:"type"`
+	}{
+		IntervalNanoseconds: intervalNs,
+		Type:                w.Type,
+	})
+	if err != nil {
+		return nil
+	}
+	return out
+}
 
 func resolveFilterBinNanos(granularityWire json.RawMessage, timeRange backend.TimeRange, maxDataPoints int64) *int64 {
 	if bn := filterBinNanosFromGranularityWire(granularityWire); bn != nil {
 		return bn
 	}
-	return defaultFilterBinNanosFromQuery(timeRange, maxDataPoints)
+	return defaultIntervalNanosecondsFromQuery(timeRange, maxDataPoints)
 }
 
-func defaultFilterBinNanosFromQuery(timeRange backend.TimeRange, maxDataPoints int64) *int64 {
+func defaultIntervalNanosecondsFromQuery(timeRange backend.TimeRange, maxDataPoints int64) *int64 {
 	from := timeRange.From
 	to := timeRange.To
 	if from.IsZero() || to.IsZero() || !to.After(from) {

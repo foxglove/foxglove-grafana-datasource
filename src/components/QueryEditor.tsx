@@ -235,17 +235,14 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
           <InlineField
             label="Interval"
             labelWidth={10}
-            tooltip="Bin interval for aggregation (e.g. 10s, 1m, 1h)"
-            invalid={!query.aggregation.interval}
-            error={!query.aggregation.interval ? 'Required' : undefined}
+            tooltip="Bin size for aggregation (e.g. 10s, 1m). When empty, defaults to the dashboard time range divided by Max data points from the panel query options."
           >
             <Input
               value={query.aggregation.interval}
               onChange={onAggregationIntervalChange}
               onBlur={runOnBlur}
-              placeholder="10s, 1m, 1h"
+              placeholder="Empty: range ÷ max data points"
               width={16}
-              invalid={!query.aggregation.interval}
             />
           </InlineField>
         )}

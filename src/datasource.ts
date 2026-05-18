@@ -59,18 +59,17 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
 
     if (result.aggregation) {
       const intervalStr = tpl.replace(result.aggregation.interval || '', scopedVars).trim();
-      let intervalNs = undefined;
+      let intervalNanoseconds = 0;
       if (intervalStr) {
-        intervalNs = intervalStringToNanoseconds(intervalStr);
+        const ns = intervalStringToNanoseconds(intervalStr);
+        if (ns !== undefined && ns > 0) {
+          intervalNanoseconds = ns;
+        }
       }
-      if (intervalNs !== undefined && intervalNs > 0) {
-        result.aggregationWire = {
-          intervalNanoseconds: intervalNs,
-          type: result.aggregation.type,
-        };
-      } else {
-        delete result.aggregationWire;
-      }
+      result.aggregationWire = {
+        intervalNanoseconds,
+        type: result.aggregation.type,
+      };
     } else {
       delete result.aggregationWire;
     }
@@ -98,9 +97,6 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
       return false;
     }
     if (query.selection.type === 'deviceProperty' && !query.selection.key) {
-      return false;
-    }
-    if (query.aggregation && !query.aggregation.interval?.trim()) {
       return false;
     }
     return true;

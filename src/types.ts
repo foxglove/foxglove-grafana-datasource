@@ -46,7 +46,8 @@ export type GroupBy = DeviceIdGroupBy | DevicePropertyGroupBy;
 export type AggregationType = 'last' | 'first' | 'max' | 'min' | 'sum' | 'average' | 'median' | 'p50' | 'p90' | 'p95';
 
 export interface Aggregation {
-  /** Human-readable interval string, e.g. "10s", "1m", "1h". */
+  /** Human-readable interval string, e.g. "10s", "1m", "1h".
+   *  When empty, the plugin backend sets intervalNanoseconds to range duration ÷ Max data points. */
   interval: string;
   type: AggregationType;
 }
@@ -209,8 +210,9 @@ export interface MyQuery extends DataQuery {
   groupBy?: GroupBy;
   /** UI-friendly aggregation with human-readable interval string. */
   aggregation?: Aggregation;
-  /** Wire-format aggregation with intervalNanoseconds. Populated by
-   *  applyTemplateVariables(). Not persisted. */
+  /** Wire-format aggregation sent to the backend. Populated by applyTemplateVariables()
+   *  whenever aggregation is set (intervalNanoseconds is 0 when the UI interval is empty).
+   *  Not persisted. */
   aggregationWire?: AggregationWire;
   /** Human-readable time interval for filter condition granularity (e.g. "10s", "1m").
    *  When omitted, the plugin backend sets filterBinNanos to range duration ÷ Max data points. */

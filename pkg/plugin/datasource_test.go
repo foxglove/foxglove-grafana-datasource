@@ -111,21 +111,32 @@ func TestQueryModelUnmarshal_WithGranularity(t *testing.T) {
 	}
 }
 
-func TestAggregationWireHasPositiveInterval(t *testing.T) {
-	if aggregationWireHasPositiveInterval(nil) {
-		t.Fatal("nil should be false")
+func TestResolveAggregation(t *testing.T) {
+	from := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := from.Add(10 * time.Second)
+	tr := backend.TimeRange{From: from, To: to}
+
+	wire := json.RawMessage(`{"intervalNanoseconds":500000000,"type":"max"}`)
+	agg := resolveAggregation(wire, tr, 100)
+	if string(agg) != `{"intervalNanoseconds":500000000,"type":"max"}` {
+		t.Fatalf("explicit wire interval should be preserved, got %s", agg)
 	}
-	if aggregationWireHasPositiveInterval(json.RawMessage(`null`)) {
-		t.Fatal("null should be false")
+
+	zeroWire := json.RawMessage(`{"intervalNanoseconds":0,"type":"max"}`)
+	agg = resolveAggregation(zeroWire, tr, 1000)
+	var parsed struct {
+		IntervalNanoseconds int64  `json:"intervalNanoseconds"`
+		Type                string `json:"type"`
 	}
-	if aggregationWireHasPositiveInterval(json.RawMessage(`{}`)) {
-		t.Fatal("empty object should be false")
+	if err := json.Unmarshal(agg, &parsed); err != nil {
+		t.Fatal(err)
 	}
-	if aggregationWireHasPositiveInterval(json.RawMessage(`{"intervalNanoseconds":0,"type":"max"}`)) {
-		t.Fatal("zero ns should be false")
+	if parsed.Type != "max" || parsed.IntervalNanoseconds != 10_000_000 {
+		t.Fatalf("zero interval should default to 10ms, got %+v", parsed)
 	}
-	if !aggregationWireHasPositiveInterval(json.RawMessage(`{"intervalNanoseconds":1,"type":"max"}`)) {
-		t.Fatal("positive ns should be true")
+
+	if resolveAggregation(nil, tr, 1000) != nil {
+		t.Fatal("missing wire should yield nil")
 	}
 }
 
@@ -154,19 +165,19 @@ func TestDefaultFilterBinNanosFromQuery(t *testing.T) {
 	to := from.Add(10 * time.Second)
 	tr := backend.TimeRange{From: from, To: to}
 
-	bn := defaultFilterBinNanosFromQuery(tr, 1000)
+	bn := defaultIntervalNanosecondsFromQuery(tr, 1000)
 	if bn == nil || *bn != 10_000_000 {
 		t.Fatalf("want 10ms (10_000_000 ns), got %v", bn)
 	}
 
 	// Zero max data points uses defaultMaxDataPoints.
-	bn = defaultFilterBinNanosFromQuery(tr, 0)
+	bn = defaultIntervalNanosecondsFromQuery(tr, 0)
 	if bn == nil || *bn != 10_000_000 {
 		t.Fatalf("zero maxDataPoints: want 10_000_000 ns, got %v", bn)
 	}
 
 	// Invalid range yields nil.
-	if defaultFilterBinNanosFromQuery(backend.TimeRange{From: to, To: from}, 100) != nil {
+	if defaultIntervalNanosecondsFromQuery(backend.TimeRange{From: to, To: from}, 100) != nil {
 		t.Fatal("inverted range should yield nil")
 	}
 }
