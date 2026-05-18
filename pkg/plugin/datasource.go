@@ -47,24 +47,26 @@ func getAPIBaseURL(config *models.PluginSettings) string {
 
 // queryModel represents the per-query JSON sent from the frontend.
 // The backend treats selection, filter, groupBy, and aggregation as opaque
-// JSON objects that are forwarded directly to the Foxglove API.
+// JSON forwarded to the Foxglove API; granularityWire is translated to filterBinNanos in the POST body.
 type queryModel struct {
 	Selection       json.RawMessage `json:"selection"`
 	FilterWire      json.RawMessage `json:"filterWire"`
 	GroupBy         json.RawMessage `json:"groupBy"`
 	AggregationWire json.RawMessage `json:"aggregationWire,omitempty"`
+	GranularityWire json.RawMessage `json:"granularityWire,omitempty"`
 }
 
-// grafanaQueryRequest is the body POSTed to /v1/data/grafana-query.
+// grafanaQueryRequest is the body POSTed to /v1/data/grafana-plugin-query.
 type grafanaQueryRequest struct {
-	ProjectID   string          `json:"projectId"`
-	SiteID      string          `json:"siteId"`
-	Start       string          `json:"start"`
-	End         string          `json:"end"`
-	Selection   json.RawMessage `json:"selection"`
-	Filter      json.RawMessage `json:"filter,omitempty"`
-	GroupBy     json.RawMessage `json:"groupBy"`
-	Aggregation json.RawMessage `json:"aggregation,omitempty"`
+	ProjectID      string          `json:"projectId"`
+	SiteID         string          `json:"siteId"`
+	Start          string          `json:"start"`
+	End            string          `json:"end"`
+	Selection      json.RawMessage `json:"selection"`
+	Filter         json.RawMessage `json:"filter,omitempty"`
+	GroupBy        json.RawMessage `json:"groupBy"`
+	Aggregation    json.RawMessage `json:"aggregation,omitempty"`
+	FilterBinNanos *int64          `json:"filterBinNanos,omitempty"`
 }
 
 type grafanaQueryResponse struct {
@@ -118,7 +120,10 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 		GroupBy:   qm.GroupBy,
 	}
 
-	apiReq.Aggregation = qm.AggregationWire
+	if agg := resolveAggregation(qm.AggregationWire, query.TimeRange, query.MaxDataPoints); len(agg) > 0 {
+		apiReq.Aggregation = agg
+	}
+	apiReq.FilterBinNanos = resolveFilterBinNanos(qm.GranularityWire, query.TimeRange, query.MaxDataPoints)
 
 	frames, err := d.fetchGrafanaQuery(ctx, config, apiReq)
 	if err != nil {
@@ -126,6 +131,89 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 	}
 
 	return backend.DataResponse{Frames: frames}
+}
+
+// defaultMaxDataPoints matches Grafana's typical fallback when the panel does not
+// send an explicit max data points value.
+const defaultMaxDataPoints int64 = 1000
+
+// resolveAggregation builds the Foxglove API aggregation object from aggregationWire.
+// When intervalNanoseconds is zero (empty UI interval), it defaults to range ÷ max data points.
+func resolveAggregation(wire json.RawMessage, timeRange backend.TimeRange, maxDataPoints int64) json.RawMessage {
+	if len(wire) == 0 || string(wire) == "null" {
+		return nil
+	}
+	var w struct {
+		IntervalNanoseconds int64  `json:"intervalNanoseconds"`
+		Type                string `json:"type"`
+	}
+	if err := json.Unmarshal(wire, &w); err != nil || w.Type == "" {
+		return nil
+	}
+	intervalNs := w.IntervalNanoseconds
+	if intervalNs <= 0 {
+		if def := defaultIntervalNanosecondsFromQuery(timeRange, maxDataPoints); def != nil {
+			intervalNs = *def
+		} else {
+			return nil
+		}
+	}
+	out, err := json.Marshal(struct {
+		IntervalNanoseconds int64  `json:"intervalNanoseconds"`
+		Type                string `json:"type"`
+	}{
+		IntervalNanoseconds: intervalNs,
+		Type:                w.Type,
+	})
+	if err != nil {
+		return nil
+	}
+	return out
+}
+
+func resolveFilterBinNanos(granularityWire json.RawMessage, timeRange backend.TimeRange, maxDataPoints int64) *int64 {
+	if bn := filterBinNanosFromGranularityWire(granularityWire); bn != nil {
+		return bn
+	}
+	return defaultIntervalNanosecondsFromQuery(timeRange, maxDataPoints)
+}
+
+func defaultIntervalNanosecondsFromQuery(timeRange backend.TimeRange, maxDataPoints int64) *int64 {
+	from := timeRange.From
+	to := timeRange.To
+	if from.IsZero() || to.IsZero() || !to.After(from) {
+		return nil
+	}
+
+	points := maxDataPoints
+	if points <= 0 {
+		points = defaultMaxDataPoints
+	}
+
+	durationNs := to.Sub(from).Nanoseconds()
+	if durationNs <= 0 {
+		return nil
+	}
+
+	bn := durationNs / points
+	if bn < 1 {
+		bn = 1
+	}
+	return &bn
+}
+
+func filterBinNanosFromGranularityWire(raw json.RawMessage) *int64 {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var w struct {
+		IntervalNanoseconds int64 `json:"intervalNanoseconds"`
+	}
+	if err := json.Unmarshal(raw, &w); err != nil || w.IntervalNanoseconds <= 0 {
+		return nil
+	}
+	v := w.IntervalNanoseconds
+	return &v
 }
 
 // fetchGrafanaQuery POSTs to /v1/data/grafana-query, follows the signed link,

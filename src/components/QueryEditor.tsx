@@ -140,6 +140,10 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     onChange({ ...query, filter });
   };
 
+  const onGranularityChange = (e: ChangeEvent<HTMLInputElement>) => {
+    onChange({ ...query, granularity: e.target.value });
+  };
+
   const runOnBlur = () => onRunQuery();
 
   return (
@@ -231,20 +235,34 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
           <InlineField
             label="Interval"
             labelWidth={10}
-            tooltip="Bin interval for aggregation (e.g. 10s, 1m, 1h)"
-            invalid={!query.aggregation.interval}
-            error={!query.aggregation.interval ? 'Required' : undefined}
+            tooltip="Bin size for aggregation (e.g. 10s, 1m). When empty, defaults to (dashboard time range  / max data points)"
           >
             <Input
               value={query.aggregation.interval}
               onChange={onAggregationIntervalChange}
               onBlur={runOnBlur}
-              placeholder="10s, 1m, 1h"
+              placeholder="e.g. 10s, 1m, 1h"
               width={16}
-              invalid={!query.aggregation.interval}
             />
           </InlineField>
         )}
+      </InlineFieldRow>
+
+      <InlineFieldRow>
+        <InlineField
+          label="Granularity"
+          labelWidth={14}
+          grow
+          tooltip="Bin size for evaluating filter conditions (e.g. 10s, 1m). When empty, defaults to (dashboard time range  / max data points)"
+        >
+          <Input
+            value={query.granularity ?? ''}
+            onChange={onGranularityChange}
+            onBlur={runOnBlur}
+            placeholder="e.g. 10s, 1m, 1h"
+            width={24}
+          />
+        </InlineField>
       </InlineFieldRow>
 
       {/* Filter */}

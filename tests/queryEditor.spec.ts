@@ -17,3 +17,9 @@ test('should render aggregation section', async ({ panelEditPage, readProvisione
   await panelEditPage.datasource.set(ds.name);
   await expect(panelEditPage.getQueryEditorRow('A').getByText('Aggregation')).toBeVisible();
 });
+
+test('should render granularity field', async ({ panelEditPage, readProvisionedDataSource }) => {
+  const ds = await readProvisionedDataSource({ fileName: 'datasources.yml' });
+  await panelEditPage.datasource.set(ds.name);
+  await expect(panelEditPage.getQueryEditorRow('A').getByText('Granularity')).toBeVisible();
+});

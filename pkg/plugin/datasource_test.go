@@ -83,4 +83,139 @@ func TestQueryModelUnmarshal(t *testing.T) {
 	if len(qm.AggregationWire) != 0 {
 		t.Fatal("aggregationWire should be empty when omitted")
 	}
+	if len(qm.GranularityWire) != 0 {
+		t.Fatal("granularityWire should be empty when omitted")
+	}
+}
+
+func TestQueryModelUnmarshal_WithGranularity(t *testing.T) {
+	raw := `{
+		"selection": {"type":"messagePath","messagePath":"/imu.accel.x","topic":"/imu","selectorPath":[{"kind":"field","field":"accel"},{"kind":"field","field":"x"}]},
+		"filterWire": {"type":"device","op":"eq","field":"name","value":"robot-1"},
+		"groupBy": {"type":"deviceId"},
+		"granularityWire": {"intervalNanoseconds":1000000000}
+	}`
+	var qm queryModel
+	if err := json.Unmarshal([]byte(raw), &qm); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if len(qm.GranularityWire) == 0 {
+		t.Fatal("granularityWire should be present")
+	}
+	if string(qm.GranularityWire) != `{"intervalNanoseconds":1000000000}` {
+		t.Fatalf("unexpected granularityWire: %s", string(qm.GranularityWire))
+	}
+	bn := filterBinNanosFromGranularityWire(qm.GranularityWire)
+	if bn == nil || *bn != 1_000_000_000 {
+		t.Fatalf("filterBinNanos: want 1000000000, got %v", bn)
+	}
+}
+
+func TestResolveAggregation(t *testing.T) {
+	from := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := from.Add(10 * time.Second)
+	tr := backend.TimeRange{From: from, To: to}
+
+	wire := json.RawMessage(`{"intervalNanoseconds":500000000,"type":"max"}`)
+	agg := resolveAggregation(wire, tr, 100)
+	if string(agg) != `{"intervalNanoseconds":500000000,"type":"max"}` {
+		t.Fatalf("explicit wire interval should be preserved, got %s", agg)
+	}
+
+	zeroWire := json.RawMessage(`{"intervalNanoseconds":0,"type":"max"}`)
+	agg = resolveAggregation(zeroWire, tr, 1000)
+	var parsed struct {
+		IntervalNanoseconds int64  `json:"intervalNanoseconds"`
+		Type                string `json:"type"`
+	}
+	if err := json.Unmarshal(agg, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Type != "max" || parsed.IntervalNanoseconds != 10_000_000 {
+		t.Fatalf("zero interval should default to 10ms, got %+v", parsed)
+	}
+
+	if resolveAggregation(nil, tr, 1000) != nil {
+		t.Fatal("missing wire should yield nil")
+	}
+}
+
+func TestFilterBinNanosFromGranularityWire(t *testing.T) {
+	if filterBinNanosFromGranularityWire(nil) != nil {
+		t.Fatal("nil raw should yield nil")
+	}
+	if filterBinNanosFromGranularityWire(json.RawMessage(`null`)) != nil {
+		t.Fatal("null json should yield nil")
+	}
+	raw := json.RawMessage(`{"intervalNanoseconds":1000000000}`)
+	bn := filterBinNanosFromGranularityWire(raw)
+	if bn == nil || *bn != 1_000_000_000 {
+		t.Fatalf("want 1000000000, got %v", bn)
+	}
+	if filterBinNanosFromGranularityWire(json.RawMessage(`{}`)) != nil {
+		t.Fatal("empty object should yield nil")
+	}
+	if filterBinNanosFromGranularityWire(json.RawMessage(`{"intervalNanoseconds":0}`)) != nil {
+		t.Fatal("zero ns should yield nil")
+	}
+}
+
+func TestDefaultFilterBinNanosFromQuery(t *testing.T) {
+	from := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := from.Add(10 * time.Second)
+	tr := backend.TimeRange{From: from, To: to}
+
+	bn := defaultIntervalNanosecondsFromQuery(tr, 1000)
+	if bn == nil || *bn != 10_000_000 {
+		t.Fatalf("want 10ms (10_000_000 ns), got %v", bn)
+	}
+
+	// Zero max data points uses defaultMaxDataPoints.
+	bn = defaultIntervalNanosecondsFromQuery(tr, 0)
+	if bn == nil || *bn != 10_000_000 {
+		t.Fatalf("zero maxDataPoints: want 10_000_000 ns, got %v", bn)
+	}
+
+	// Invalid range yields nil.
+	if defaultIntervalNanosecondsFromQuery(backend.TimeRange{From: to, To: from}, 100) != nil {
+		t.Fatal("inverted range should yield nil")
+	}
+}
+
+func TestResolveFilterBinNanos(t *testing.T) {
+	from := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := from.Add(time.Second)
+	tr := backend.TimeRange{From: from, To: to}
+
+	wire := json.RawMessage(`{"intervalNanoseconds":500000000}`)
+	bn := resolveFilterBinNanos(wire, tr, 100)
+	if bn == nil || *bn != 500_000_000 {
+		t.Fatalf("user granularity should win, got %v", bn)
+	}
+
+	bn = resolveFilterBinNanos(nil, tr, 100)
+	if bn == nil || *bn != 10_000_000 {
+		t.Fatalf("default should be 1s/100 = 10ms, got %v", bn)
+	}
+}
+
+func TestGrafanaQueryRequestMarshal_FilterBinNanos(t *testing.T) {
+	bn := int64(500)
+	req := grafanaQueryRequest{
+		ProjectID:      "p",
+		SiteID:         "s",
+		Start:          "2024-01-01T00:00:00Z",
+		End:            "2024-01-02T00:00:00Z",
+		Selection:      json.RawMessage(`{}`),
+		GroupBy:        json.RawMessage(`{"type":"deviceId"}`),
+		FilterBinNanos: &bn,
+	}
+	out, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `"filterBinNanos":500`
+	if !strings.Contains(string(out), want) {
+		t.Fatalf("marshal should contain %q, got %s", want, out)
+	}
 }

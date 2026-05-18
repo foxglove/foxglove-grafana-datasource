@@ -1,10 +1,17 @@
-import { DataSourceInstanceSettings, CoreApp, ScopedVars, rangeUtil } from '@grafana/data';
+import { DataSourceInstanceSettings, CoreApp, ScopedVars } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv, TemplateSrv } from '@grafana/runtime';
 
+import { intervalStringToNanoseconds } from './intervalNanos';
 import { parseAndConvertMessagePath } from './messagePathSet';
-import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY, FilterWire, FilterWireSerialized, serializeFilterNode, FilterNode } from './types';
-
-const MS_TO_NS = 1_000_000;
+import {
+  MyQuery,
+  MyDataSourceOptions,
+  DEFAULT_QUERY,
+  FilterWire,
+  FilterWireSerialized,
+  serializeFilterNode,
+  FilterNode,
+} from './types';
 
 export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptions> {
   constructor(instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions>) {
@@ -51,19 +58,32 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
     }
 
     if (result.aggregation) {
-      const intervalStr = tpl.replace(result.aggregation.interval || '', scopedVars);
-      let intervalNs = 0;
+      const intervalStr = tpl.replace(result.aggregation.interval || '', scopedVars).trim();
+      let intervalNanoseconds = 0;
       if (intervalStr) {
-        try {
-          intervalNs = rangeUtil.intervalToMs(intervalStr) * MS_TO_NS;
-        } catch {
-          // Leave at 0 if the interval string is unparseable.
+        const ns = intervalStringToNanoseconds(intervalStr);
+        if (ns !== undefined && ns > 0) {
+          intervalNanoseconds = ns;
         }
       }
       result.aggregationWire = {
-        intervalNanoseconds: intervalNs,
+        intervalNanoseconds,
         type: result.aggregation.type,
       };
+    } else {
+      delete result.aggregationWire;
+    }
+
+    const granularityStr = tpl.replace(result.granularity ?? '', scopedVars).trim();
+    if (granularityStr) {
+      const granularityNs = intervalStringToNanoseconds(granularityStr);
+      if (granularityNs !== undefined && granularityNs > 0) {
+        result.granularityWire = { intervalNanoseconds: granularityNs };
+      } else {
+        delete result.granularityWire;
+      }
+    } else {
+      delete result.granularityWire;
     }
 
     return result;
@@ -79,9 +99,6 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
     if (query.selection.type === 'deviceProperty' && !query.selection.key) {
       return false;
     }
-    if (query.aggregation && !query.aggregation.interval) {
-      return false;
-    }
     return true;
   }
 }
@@ -91,11 +108,7 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
  * apply Grafana template variable substitution and parse message paths
  * into topic + selectorPath.
  */
-function resolveFilter(
-  filter: FilterWireSerialized,
-  tpl: TemplateSrv,
-  scopedVars: ScopedVars,
-): FilterWire {
+function resolveFilter(filter: FilterWireSerialized, tpl: TemplateSrv, scopedVars: ScopedVars): FilterWire {
   if (filter.type === 'and' || filter.type === 'or') {
     return {
       type: filter.type,
@@ -129,7 +142,10 @@ function resolveFilter(
 /** For 'in' ops, split comma-separated string into an array; otherwise pass through. */
 function resolveValue(op: string, raw: string): string | string[] {
   if (op === 'in') {
-    return raw.split(',').map((s) => s.trim()).filter(Boolean);
+    return raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
   return raw;
 }
