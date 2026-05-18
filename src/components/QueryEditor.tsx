@@ -235,7 +235,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
           <InlineField
             label="Interval"
             labelWidth={10}
-            tooltip="Bin size for aggregation (e.g. 10s, 1m). When empty, defaults to the dashboard time range divided by Max data points from the panel query options."
+            tooltip="Bin size for aggregation (e.g. 10s, 1m). When empty, defaults to (dashboard time range  / max data points)"
           >
             <Input
               value={query.aggregation.interval}
@@ -253,7 +253,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
           label="Granularity"
           labelWidth={14}
           grow
-          tooltip="Time step for evaluating filter conditions (e.g. 10s, 1m). When empty, defaults to (dashboard time range  / Max data points)."
+          tooltip="Bin size for evaluating filter conditions (e.g. 10s, 1m). When empty, defaults to (dashboard time range  / max data points)"
         >
           <Input
             value={query.granularity ?? ''}
