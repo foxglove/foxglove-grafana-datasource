@@ -2,9 +2,9 @@
 
 ## v0.0.6
 
-###
+### Changed
 
-- Changed: better build artifacts for Grafana release process.
+- Better build artifacts for Grafana release process.
 
 ## v0.0.5
 
