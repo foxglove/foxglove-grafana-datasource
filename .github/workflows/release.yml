@@ -50,8 +50,10 @@ jobs:
           fi
 
           rm -f "${ORIGINAL_ARCHIVE}" "${ORIGINAL_SHA1SUM}"
-          rm -rf "${RELEASE_DIR}"
-          mv "${PLUGIN_ID}" "${RELEASE_DIR}"
+          if [ "${PLUGIN_ID}" != "${RELEASE_DIR}" ]; then
+            rm -rf "${RELEASE_DIR}"
+            mv "${PLUGIN_ID}" "${RELEASE_DIR}"
+          fi
 
           archive="${RELEASE_DIR}-${PLUGIN_VERSION}.zip"
           archive_sha1sum="${archive}.sha1"
@@ -66,7 +68,7 @@ jobs:
           ORIGINAL_SHA1SUM: ${{ steps.package-plugin.outputs.archive-sha1sum }}
           PLUGIN_ID: ${{ steps.package-plugin.outputs.plugin-id }}
           PLUGIN_VERSION: ${{ steps.package-plugin.outputs.plugin-version }}
-          RELEASE_DIR: foxglove-grafana-datasource
+          RELEASE_DIR: foxglovedev-foxglove-datasource
           RELEASE_TAG: ${{ inputs.tag_name }}
 
       - name: Create Github release
