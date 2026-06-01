@@ -7,17 +7,22 @@
   "backend": true,
   "executable": "gpx_foxglove",
   "info": {
-    "description": "",
+    "description": "Query Foxglove telemetry data from Grafana dashboards.",
     "author": {
       "name": "Foxglove dev"
     },
-    "keywords": ["datasource"],
+    "keywords": ["datasource", "foxglove", "telemetry", "robotics"],
     "logos": {
       "small": "img/logo.svg",
       "large": "img/logo.svg"
     },
     "links": [],
-    "screenshots": [],
+    "screenshots": [
+      {
+        "name": "Foxglove data source query editor",
+        "path": "img/screenshot.png"
+      }
+    ],
     "version": "%VERSION%",
     "updated": "%TODAY%"
   },
