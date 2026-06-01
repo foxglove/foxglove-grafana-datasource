@@ -6,6 +6,12 @@ on:
   push:
     tags:
       - 'v*' # Run workflow on version tags, e.g. v1.0.0.
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag to create/use for the draft release. Defaults to v<plugin version>.'
+        required: false
+        type: string
 
 permissions: read-all
 
@@ -31,7 +37,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "v${PLUGIN_VERSION}" != "${GITHUB_REF_NAME}" ]; then
+          expected_tag="v${PLUGIN_VERSION}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            release_tag="${RELEASE_TAG:-$expected_tag}"
+          else
+            release_tag="${GITHUB_REF_NAME}"
+          fi
+
+          if [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ] && [ "$expected_tag" != "$release_tag" ]; then
             printf "Plugin version does not match tag name. The tag should be v%s\n" "${PLUGIN_VERSION}"
             exit 1
           fi
@@ -47,18 +60,22 @@ jobs:
 
           echo "archive=${archive}" >> "$GITHUB_OUTPUT"
           echo "archive-sha1sum=${archive_sha1sum}" >> "$GITHUB_OUTPUT"
+          echo "release-tag=${release_tag}" >> "$GITHUB_OUTPUT"
         env:
           ORIGINAL_ARCHIVE: ${{ steps.package-plugin.outputs.archive }}
           ORIGINAL_SHA1SUM: ${{ steps.package-plugin.outputs.archive-sha1sum }}
           PLUGIN_ID: ${{ steps.package-plugin.outputs.plugin-id }}
           PLUGIN_VERSION: ${{ steps.package-plugin.outputs.plugin-version }}
           RELEASE_DIR: foxglove-grafana-datasource
+          RELEASE_TAG: ${{ inputs.tag_name }}
 
       - name: Create Github release
         uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
         with:
           draft: true
           generate_release_notes: true
+          tag_name: ${{ steps.release-package.outputs.release-tag }}
+          target_commitish: ${{ github.sha }}
           files: |
             ./${{ steps.release-package.outputs.archive }}
             ./${{ steps.release-package.outputs.archive-sha1sum }}
