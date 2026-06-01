@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.0.6
+
+###
+
+- Changed: better build artifacts for Grafana release process.
+
 ## v0.0.5
 
 ### Added
