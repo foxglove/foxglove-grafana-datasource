@@ -19,11 +19,46 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: grafana/plugin-actions/build-plugin@build-plugin/v1.0.2
-        # Uncomment to enable plugin signing
-        # (For more info on how to generate the access policy token see https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin#generate-an-access-policy-token)
-        #with:
-        # Make sure to save the token in your repository secrets
-        #policy_token: $
-        # Usage of GRAFANA_API_KEY is deprecated, prefer `policy_token` option above
-        #grafana_token: $
+      - uses: grafana/plugin-actions/package-plugin@build-plugin/v1.0.2
+        id: package-plugin
+        with:
+          go-version: '1.22'
+          node-version: '22'
+          policy_token: ${{ secrets.GRAFANA_ACCESS_POLICY_TOKEN }}
+
+      - name: Repackage plugin for release
+        id: release-package
+        run: |
+          set -euo pipefail
+
+          if [ "v${PLUGIN_VERSION}" != "${GITHUB_REF_NAME}" ]; then
+            printf "Plugin version does not match tag name. The tag should be v%s\n" "${PLUGIN_VERSION}"
+            exit 1
+          fi
+
+          rm -f "${ORIGINAL_ARCHIVE}" "${ORIGINAL_SHA1SUM}"
+          rm -rf "${RELEASE_DIR}"
+          mv "${PLUGIN_ID}" "${RELEASE_DIR}"
+
+          archive="${RELEASE_DIR}-${PLUGIN_VERSION}.zip"
+          archive_sha1sum="${archive}.sha1"
+          zip "${archive}" "${RELEASE_DIR}" -r
+          sha1sum "${archive}" | cut -f1 -d' ' > "${archive_sha1sum}"
+
+          echo "archive=${archive}" >> "$GITHUB_OUTPUT"
+          echo "archive-sha1sum=${archive_sha1sum}" >> "$GITHUB_OUTPUT"
+        env:
+          ORIGINAL_ARCHIVE: ${{ steps.package-plugin.outputs.archive }}
+          ORIGINAL_SHA1SUM: ${{ steps.package-plugin.outputs.archive-sha1sum }}
+          PLUGIN_ID: ${{ steps.package-plugin.outputs.plugin-id }}
+          PLUGIN_VERSION: ${{ steps.package-plugin.outputs.plugin-version }}
+          RELEASE_DIR: foxglove-grafana-datasource
+
+      - name: Create Github release
+        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            ./${{ steps.release-package.outputs.archive }}
+            ./${{ steps.release-package.outputs.archive-sha1sum }}
