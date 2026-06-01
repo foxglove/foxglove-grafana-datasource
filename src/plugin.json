@@ -20,7 +20,7 @@
     "screenshots": [
       {
         "name": "Foxglove data source query editor",
-        "path": "img/screenshot.svg"
+        "path": "img/screenshot.png"
       }
     ],
     "version": "%VERSION%",
