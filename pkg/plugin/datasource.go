@@ -13,6 +13,7 @@ import (
 	"github.com/foxglove-dev/foxglove/pkg/models"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
 
@@ -262,7 +263,7 @@ func (d *Datasource) fetchGrafanaQuery(
 		return nil, fmt.Errorf("API response contained no download link")
 	}
 
-	fmt.Println("qResp.Link", qResp.Link)
+	log.DefaultLogger.Debug("Received Grafana query download link", "link", qResp.Link)
 
 	// Fetch the Grafana Frame JSON from the signed link.
 	dlReq, err := http.NewRequestWithContext(ctx, "GET", qResp.Link, nil)
