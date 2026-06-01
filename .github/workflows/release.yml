@@ -50,8 +50,10 @@ jobs:
           fi
 
           rm -f "${ORIGINAL_ARCHIVE}" "${ORIGINAL_SHA1SUM}"
-          rm -rf "${RELEASE_DIR}"
-          mv "${PLUGIN_ID}" "${RELEASE_DIR}"
+          if [ "${PLUGIN_ID}" != "${RELEASE_DIR}" ]; then
+            rm -rf "${RELEASE_DIR}"
+            mv "${PLUGIN_ID}" "${RELEASE_DIR}"
+          fi
 
           archive="${RELEASE_DIR}-${PLUGIN_VERSION}.zip"
           archive_sha1sum="${archive}.sha1"
