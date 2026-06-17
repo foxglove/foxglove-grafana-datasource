@@ -2,6 +2,7 @@ import React, { ChangeEvent, useMemo } from 'react';
 import { Combobox, type ComboboxOption, InlineField, InlineFieldRow, Input, Stack } from '@grafana/ui';
 import { QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
+import { intervalStringToNanoseconds } from '../intervalNanos';
 import { parseAndConvertMessagePath } from '../messagePathSet';
 import {
   MyDataSourceOptions,
@@ -55,6 +56,12 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     const result = parseAndConvertMessagePath(rawMessagePath);
     return result.ok ? undefined : result.error;
   }, [rawMessagePath]);
+
+  const rawInterval = query.aggregation?.interval ?? '';
+  const intervalError = useMemo(() => validateIntervalString(rawInterval), [rawInterval]);
+
+  const rawGranularity = query.granularity ?? '';
+  const granularityError = useMemo(() => validateIntervalString(rawGranularity), [rawGranularity]);
 
   // --- Selection handlers ---
 
@@ -236,6 +243,8 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
             label="Interval"
             labelWidth={10}
             tooltip="Bin size for aggregation (e.g. 10s, 1m). When empty, defaults to (dashboard time range  / max data points)"
+            invalid={!!intervalError}
+            error={intervalError}
           >
             <Input
               value={query.aggregation.interval}
@@ -243,6 +252,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
               onBlur={runOnBlur}
               placeholder="e.g. 10s, 1m, 1h"
               width={16}
+              invalid={!!intervalError}
             />
           </InlineField>
         )}
@@ -254,6 +264,8 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
           labelWidth={14}
           grow
           tooltip="Bin size for evaluating filter conditions (e.g. 10s, 1m). When empty, defaults to (dashboard time range  / max data points)"
+          invalid={!!granularityError}
+          error={granularityError}
         >
           <Input
             value={query.granularity ?? ''}
@@ -261,6 +273,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
             onBlur={runOnBlur}
             placeholder="e.g. 10s, 1m, 1h"
             width={24}
+            invalid={!!granularityError}
           />
         </InlineField>
       </InlineFieldRow>
@@ -274,4 +287,34 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
       </InlineField>
     </Stack>
   );
+}
+
+/**
+ * Validate a user-entered interval string. Empty values are valid (they signal
+ * "use the default"). Strings that contain a `$` are skipped, as they will be
+ * substituted by Grafana template variables before parsing.
+ */
+function validateIntervalString(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  // Empty input is intentional — signals the backend to use the default
+  // interval (dashboard range ÷ max data points).
+  if (!trimmed) {
+    return undefined;
+  }
+  // Contains a Grafana template variable (e.g. "$interval"). We can't validate
+  // it here because substitution happens later, in applyTemplateVariables().
+  if (trimmed.includes('$')) {
+    return undefined;
+  }
+  const ns = intervalStringToNanoseconds(trimmed);
+  // Parser didn't recognize the format (e.g. "1hr", "5min", "abc").
+  if (ns === undefined) {
+    return `Invalid interval "${raw}". Expected a number with an optional unit suffix (ms, s, m, h, d, w, M, y), e.g. 10s, 1m, 1h.`;
+  }
+  // Parsed but non-positive (e.g. "0s", "0") — meaningless as a bin size and
+  // would also be treated by the backend as "use the default".
+  if (ns <= 0) {
+    return 'Interval must be greater than zero.';
+  }
+  return undefined;
 }

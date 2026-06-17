@@ -23,4 +23,11 @@ describe('intervalStringToNanoseconds', () => {
     expect(intervalStringToNanoseconds('0ms')).toBe(0);
     expect(intervalStringToNanoseconds('not-a-duration')).toBeUndefined();
   });
+
+  it('returns undefined for unit typos like "1hr" or "5min"', () => {
+    expect(intervalStringToNanoseconds('1hr')).toBeUndefined();
+    expect(intervalStringToNanoseconds('5min')).toBeUndefined();
+    expect(intervalStringToNanoseconds('10sec')).toBeUndefined();
+    expect(intervalStringToNanoseconds('2days')).toBeUndefined();
+  });
 });
