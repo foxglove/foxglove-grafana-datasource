@@ -309,7 +309,7 @@ function validateIntervalString(raw: string): string | undefined {
   const ns = intervalStringToNanoseconds(trimmed);
   // Parser didn't recognize the format (e.g. "1hr", "5min", "abc").
   if (ns === undefined) {
-    return `Invalid interval "${raw}". Expected a number with an optional unit suffix (ms, s, m, h, d, w, M, y), e.g. 10s, 1m, 1h.`;
+    return `Invalid interval "${raw}". valid suffixes are (ms, s, m, h, d, w, M, y)`;
   }
   // Parsed but non-positive (e.g. "0s", "0") — meaningless as a bin size and
   // would also be treated by the backend as "use the default".
