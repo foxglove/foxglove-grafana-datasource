@@ -12,6 +12,7 @@ import (
 
 	"github.com/foxglove-dev/foxglove/pkg/models"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/httpclient"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/data"
@@ -23,16 +24,41 @@ var (
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
 )
 
-func NewDatasource(_ context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+func NewDatasource(ctx context.Context, settings backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
 	config, err := models.LoadPluginSettings(settings)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load plugin settings: %w", err)
 	}
-	return &Datasource{settings: config}, nil
+
+	// Build the HTTP client via the SDK's httpclient package so that proxy,
+	// timeout, TLS, and other options configured in Grafana apply to this data
+	// source's outbound requests (and the SDK's default middlewares, e.g.
+	// tracing, are enabled).
+	opts, err := settings.HTTPClientOptions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build http client options: %w", err)
+	}
+	// Preserve the plugin's configurable query timeout semantics:
+	// QueryHTTPTimeoutSeconds == 0 means "no overall client-side limit" (the
+	// SDK's dial/TLS/keep-alive timeouts still apply). Copy the default options
+	// struct before taking its address so we never mutate the package global.
+	if opts.Timeouts == nil {
+		to := httpclient.DefaultTimeoutOptions
+		opts.Timeouts = &to
+	}
+	opts.Timeouts.Timeout = time.Duration(config.QueryHTTPTimeoutSeconds) * time.Second
+
+	client, err := httpclient.New(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create http client: %w", err)
+	}
+
+	return &Datasource{settings: config, httpClient: client}, nil
 }
 
 type Datasource struct {
-	settings *models.PluginSettings
+	settings   *models.PluginSettings
+	httpClient *http.Client
 }
 
 const defaultAPIBaseURL = "https://api.foxglove.dev"
@@ -238,12 +264,7 @@ func (d *Datasource) fetchGrafanaQuery(
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", config.Secrets.ApiKey))
 
-	clientTimeout := time.Duration(0)
-	if config.QueryHTTPTimeoutSeconds > 0 {
-		clientTimeout = time.Duration(config.QueryHTTPTimeoutSeconds) * time.Second
-	}
-	client := &http.Client{Timeout: clientTimeout}
-	resp, err := client.Do(httpReq)
+	resp, err := d.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("API request failed: %w", err)
 	}
@@ -263,14 +284,17 @@ func (d *Datasource) fetchGrafanaQuery(
 		return nil, fmt.Errorf("API response contained no download link")
 	}
 
-	log.DefaultLogger.Debug("Received Grafana query download link", "link", qResp.Link)
+	// Do not log the signed link itself: it is a server-issued, time-limited
+	// credential granting access to query results, and could otherwise leak
+	// into log aggregation systems with broader access than this data source.
+	log.DefaultLogger.Debug("Received Grafana query download link")
 
 	// Fetch the Grafana Frame JSON from the signed link.
 	dlReq, err := http.NewRequestWithContext(ctx, "GET", qResp.Link, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create download request: %w", err)
 	}
-	dlResp, err := client.Do(dlReq)
+	dlResp, err := d.httpClient.Do(dlReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch data from signed link: %w", err)
 	}
@@ -343,32 +367,47 @@ func (d *Datasource) CheckHealth(ctx context.Context, req *backend.CheckHealthRe
 		}, nil
 	}
 
+	// Bound the health check independently of the configurable query timeout
+	// (which may be 0/"no limit") so "Save & test" stays responsive.
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	baseURL := getAPIBaseURL(config)
 	url := fmt.Sprintf("%s/v1/devices", baseURL)
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
+		// The base URL is user-configurable, so the raw error (which may embed
+		// it) is logged server-side rather than returned to the UI.
+		log.DefaultLogger.Error("Failed to create Foxglove API health check request", "err", err)
 		return &backend.CheckHealthResult{
 			Status:  backend.HealthStatusError,
-			Message: fmt.Sprintf("Failed to create health check request: %v", err),
+			Message: "Unable to connect to the Foxglove API. See the Grafana server log for details.",
 		}, nil
 	}
 	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", config.Secrets.ApiKey))
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(httpReq)
+	resp, err := d.httpClient.Do(httpReq)
 	if err != nil {
+		// Avoid leaking the (user-configurable) base URL or other internal
+		// details from the raw connection error into the UI.
+		log.DefaultLogger.Error("Foxglove API health check request failed", "err", err)
 		return &backend.CheckHealthResult{
 			Status:  backend.HealthStatusError,
-			Message: fmt.Sprintf("Failed to connect to Foxglove API: %v", err),
+			Message: "Unable to connect to the Foxglove API. See the Grafana server log for details.",
 		}, nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		// The upstream response body may contain internal details, so it is
+		// logged server-side rather than surfaced to the UI. The numeric status
+		// code is safe to show and helps operators triage.
 		body, _ := io.ReadAll(resp.Body)
+		log.DefaultLogger.Error("Foxglove API health check returned non-OK status",
+			"status", resp.StatusCode, "body", string(body))
 		return &backend.CheckHealthResult{
 			Status:  backend.HealthStatusError,
-			Message: fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(body)),
+			Message: fmt.Sprintf("The Foxglove API returned an unexpected status (%d). See the Grafana server log for details.", resp.StatusCode),
 		}, nil
 	}
 
