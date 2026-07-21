@@ -3,6 +3,9 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -217,5 +220,124 @@ func TestGrafanaQueryRequestMarshal_FilterBinNanos(t *testing.T) {
 	const want = `"filterBinNanos":500`
 	if !strings.Contains(string(out), want) {
 		t.Fatalf("marshal should contain %q, got %s", want, out)
+	}
+}
+
+func TestCheckHealth_MissingAPIKey(t *testing.T) {
+	ds := Datasource{httpClient: http.DefaultClient}
+	res, err := ds.CheckHealth(context.Background(), &backend.CheckHealthRequest{
+		PluginContext: backend.PluginContext{
+			DataSourceInstanceSettings: &backend.DataSourceInstanceSettings{
+				JSONData:                []byte(`{"projectId":"p","siteId":"s"}`),
+				DecryptedSecureJSONData: map[string]string{},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != backend.HealthStatusError {
+		t.Fatalf("expected error status, got %v", res.Status)
+	}
+	if res.Message != "API key is missing" {
+		t.Fatalf("unexpected message: %q", res.Message)
+	}
+}
+
+func TestCheckHealth_ConnectionErrorIsGeneric(t *testing.T) {
+	// Point the client at a closed local server so Dial fails with a connection error
+	// that would otherwise leak into the UI message.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "ok")
+	}))
+	serverURL := server.URL
+	server.Close()
+
+	ds := Datasource{httpClient: &http.Client{Timeout: time.Second}}
+	res, err := ds.CheckHealth(context.Background(), &backend.CheckHealthRequest{
+		PluginContext: backend.PluginContext{
+			DataSourceInstanceSettings: &backend.DataSourceInstanceSettings{
+				JSONData: []byte(`{"projectId":"p","siteId":"s","baseUrl":"` + serverURL + `"}`),
+				DecryptedSecureJSONData: map[string]string{
+					"apiKey": "test-key",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != backend.HealthStatusError {
+		t.Fatalf("expected error status, got %v", res.Status)
+	}
+	if res.Message != healthCheckErrorMessage {
+		t.Fatalf("expected generic health message, got %q", res.Message)
+	}
+	if strings.Contains(res.Message, serverURL) {
+		t.Fatalf("health message must not include base URL, got %q", res.Message)
+	}
+}
+
+func TestCheckHealth_NonOKBodyIsGeneric(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, `{"error":"internal secret details"}`)
+	}))
+	defer server.Close()
+
+	ds := Datasource{httpClient: server.Client()}
+	res, err := ds.CheckHealth(context.Background(), &backend.CheckHealthRequest{
+		PluginContext: backend.PluginContext{
+			DataSourceInstanceSettings: &backend.DataSourceInstanceSettings{
+				JSONData: []byte(`{"projectId":"p","siteId":"s","baseUrl":"` + server.URL + `"}`),
+				DecryptedSecureJSONData: map[string]string{
+					"apiKey": "test-key",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != backend.HealthStatusError {
+		t.Fatalf("expected error status, got %v", res.Status)
+	}
+	if res.Message != healthCheckErrorMessage {
+		t.Fatalf("expected generic health message, got %q", res.Message)
+	}
+	if strings.Contains(res.Message, "internal secret details") {
+		t.Fatalf("health message must not include upstream body, got %q", res.Message)
+	}
+}
+
+func TestCheckHealth_OK(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/devices" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-key" {
+			t.Fatalf("unexpected auth header: %q", got)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `[]`)
+	}))
+	defer server.Close()
+
+	ds := Datasource{httpClient: server.Client()}
+	res, err := ds.CheckHealth(context.Background(), &backend.CheckHealthRequest{
+		PluginContext: backend.PluginContext{
+			DataSourceInstanceSettings: &backend.DataSourceInstanceSettings{
+				JSONData: []byte(`{"projectId":"p","siteId":"s","baseUrl":"` + server.URL + `"}`),
+				DecryptedSecureJSONData: map[string]string{
+					"apiKey": "test-key",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != backend.HealthStatusOk {
+		t.Fatalf("expected OK status, got %v (%s)", res.Status, res.Message)
 	}
 }
