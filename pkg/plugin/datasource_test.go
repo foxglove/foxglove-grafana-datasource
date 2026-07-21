@@ -3,6 +3,9 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +34,109 @@ func TestQueryDataMissingSelection(t *testing.T) {
 	r := resp.Responses["A"]
 	if r.Error == nil {
 		t.Fatal("expected error for missing selection")
+	}
+}
+
+// checkHealthRequest builds a CheckHealthRequest pointing at baseURL with a
+// configured API key/project/site so CheckHealth proceeds to the HTTP call.
+func checkHealthRequest(baseURL string) *backend.CheckHealthRequest {
+	jsonData := fmt.Sprintf(`{"baseUrl":%q,"projectId":"p","siteId":"s"}`, baseURL)
+	return &backend.CheckHealthRequest{
+		PluginContext: backend.PluginContext{
+			DataSourceInstanceSettings: &backend.DataSourceInstanceSettings{
+				JSONData:                []byte(jsonData),
+				DecryptedSecureJSONData: map[string]string{"apiKey": "test-key"},
+			},
+		},
+	}
+}
+
+func TestCheckHealth_OK(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"devices":[]}`))
+	}))
+	defer srv.Close()
+
+	ds := &Datasource{httpClient: srv.Client()}
+	res, err := ds.CheckHealth(context.Background(), checkHealthRequest(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != backend.HealthStatusOk {
+		t.Fatalf("expected OK status, got %v (message: %q)", res.Status, res.Message)
+	}
+}
+
+func TestCheckHealth_NonOKStatusHidesBody(t *testing.T) {
+	const secret = "internal-upstream-secret-detail"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(secret))
+	}))
+	defer srv.Close()
+
+	ds := &Datasource{httpClient: srv.Client()}
+	res, err := ds.CheckHealth(context.Background(), checkHealthRequest(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != backend.HealthStatusError {
+		t.Fatalf("expected error status, got %v", res.Status)
+	}
+	// The numeric status code is safe to surface and aids triage...
+	if !strings.Contains(res.Message, "500") {
+		t.Fatalf("message should include the status code, got %q", res.Message)
+	}
+	// ...but the raw upstream body must not leak to the UI.
+	if strings.Contains(res.Message, secret) {
+		t.Fatalf("message must not contain the upstream response body, got %q", res.Message)
+	}
+}
+
+func TestCheckHealth_ConnectionErrorIsGeneric(t *testing.T) {
+	// Point at a server that is immediately closed so the request fails to
+	// connect. The generic message must not embed the (user-configurable) URL.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	baseURL := srv.URL
+	client := srv.Client()
+	srv.Close()
+
+	ds := &Datasource{httpClient: client}
+	res, err := ds.CheckHealth(context.Background(), checkHealthRequest(baseURL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != backend.HealthStatusError {
+		t.Fatalf("expected error status, got %v", res.Status)
+	}
+	if strings.Contains(res.Message, baseURL) {
+		t.Fatalf("message must not leak the base URL, got %q", res.Message)
+	}
+	if !strings.Contains(res.Message, "Grafana server log") {
+		t.Fatalf("message should point operators to the server log, got %q", res.Message)
+	}
+}
+
+func TestCheckHealth_MissingAPIKey(t *testing.T) {
+	req := &backend.CheckHealthRequest{
+		PluginContext: backend.PluginContext{
+			DataSourceInstanceSettings: &backend.DataSourceInstanceSettings{
+				JSONData:                []byte(`{"projectId":"p","siteId":"s"}`),
+				DecryptedSecureJSONData: map[string]string{},
+			},
+		},
+	}
+	ds := &Datasource{}
+	res, err := ds.CheckHealth(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != backend.HealthStatusError {
+		t.Fatalf("expected error status, got %v", res.Status)
+	}
+	if res.Message != "API key is missing" {
+		t.Fatalf("unexpected message: %q", res.Message)
 	}
 }
 

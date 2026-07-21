@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Raised the minimum required Grafana version to **11.5.0**. The query editor
+  uses the `Combobox` component, which Grafana only ships in `@grafana/ui` from
+  11.5.0 onward. On earlier versions (including the previously declared 10.4.0)
+  the query editor failed to render.
+- The backend now builds its HTTP client via the Grafana plugin SDK's
+  `httpclient` package, so proxy, timeout, TLS, and other options configured in
+  Grafana apply to the data source's outbound requests.
+
+### Security
+
+- The health check ("Save & test") no longer returns the raw connection error or
+  the upstream response body to the UI (the API base URL is user-configurable
+  and these could leak internal details). It now shows a generic message and
+  logs the details to the Grafana server log.
+- The signed query download link is no longer written to the debug log.
+
 ## v0.0.6
 
 ### Changed
