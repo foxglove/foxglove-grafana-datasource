@@ -16,7 +16,7 @@ test('renders all config editor fields', async ({
   await expect(page.getByPlaceholder('Enter your API key')).toBeVisible();
   await expect(page.getByPlaceholder('proj_...')).toBeVisible();
   await expect(page.getByPlaceholder('site_...')).toBeVisible();
-  await expect(page.getByPlaceholder('0 = no limit')).toBeVisible();
+  await expect(page.getByPlaceholder('Grafana default')).toBeVisible();
 
   await expect(page.getByText('API Base URL')).toBeVisible();
   await expect(page.getByText('Project ID')).toBeVisible();
@@ -53,11 +53,11 @@ test('query timeout accepts integers and can be cleared', async ({
   const ds = await readProvisionedDataSource({ fileName: 'datasources.yml' });
   await createDataSourceConfigPage({ type: ds.type });
 
-  const timeout = page.getByPlaceholder('0 = no limit');
+  const timeout = page.getByPlaceholder('Grafana default');
   await timeout.fill('30');
   await expect(timeout).toHaveValue('30');
 
-  // Clearing the field is allowed (means "no plugin-side limit").
+  // Clearing the field is allowed (means use Grafana's HTTP client timeout).
   await timeout.fill('');
   await expect(timeout).toHaveValue('');
 });

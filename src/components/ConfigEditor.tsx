@@ -120,7 +120,7 @@ export function ConfigEditor(props: Props) {
       <InlineField
         label="Query Timeout (seconds)"
         labelWidth={configLabelWidth}
-        tooltip="Optional per-request limit for each query HTTP call (Foxglove API POST and frame download). Empty or 0 means no plugin-side limit; Grafana’s query timeout and your infrastructure still apply."
+        tooltip="Optional per-request limit for each query HTTP call (Foxglove API POST and frame download). Empty or 0 keeps Grafana’s HTTP client timeout (and proxy/TLS settings)."
       >
         <Input
           id="config-editor-query-http-timeout"
@@ -130,7 +130,7 @@ export function ConfigEditor(props: Props) {
           value={
             jsonData.queryHttpTimeoutSeconds !== undefined ? String(jsonData.queryHttpTimeoutSeconds) : ''
           }
-          placeholder="0 = no limit"
+          placeholder="Grafana default"
           width={40}
         />
       </InlineField>

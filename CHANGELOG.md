@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Raised minimum Grafana version to **11.5.0** (`grafanaDependency`), matching the first release that exports `Combobox` from `@grafana/ui` (used by the query editor).
+- Backend HTTP requests now use the Grafana plugin SDK `httpclient`, so proxy, timeout, and TLS settings from Grafana apply to this data source.
+- Health check errors no longer return raw connection failures or upstream response bodies to the UI; details are written to the Grafana server log instead.
+
 ## v0.0.6
 
 ### Changed

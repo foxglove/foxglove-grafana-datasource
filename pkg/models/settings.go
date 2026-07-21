@@ -10,7 +10,7 @@ import (
 type PluginSettings struct {
 	BaseURL string `json:"baseUrl"`
 	// QueryHTTPTimeoutSeconds caps each HTTP request used for queries (POST + signed GET).
-	// 0 or unset means no client-side timeout (http.Client Timeout 0).
+	// 0 or unset leaves the timeout from Grafana's HTTP client options unchanged.
 	QueryHTTPTimeoutSeconds int                   `json:"queryHttpTimeoutSeconds"`
 	ProjectID               string                `json:"projectId"`
 	SiteID                  string                `json:"siteId"`

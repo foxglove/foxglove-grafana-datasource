@@ -232,7 +232,7 @@ export const DEFAULT_QUERY: Partial<MyQuery> = {
  */
 export interface MyDataSourceOptions extends DataSourceJsonData {
   baseUrl?: string;
-  /** Seconds per query HTTP request (POST + signed GET). Omit or 0 = no client-side timeout. */
+  /** Seconds per query HTTP request (POST + signed GET). Omit or 0 = use Grafana HTTP client timeout. */
   queryHttpTimeoutSeconds?: number;
   projectId?: string;
   siteId?: string;
