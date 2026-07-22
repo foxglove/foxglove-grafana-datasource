@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.0.8
+
+### Changed
+
+- Bumped Go toolchain to 1.26.5 to address stdlib OSV findings (GO-2026-4970, GO-2026-5037, GO-2026-5038, GO-2026-5039, GO-2026-5856).
+
 ## v0.0.7
 
 ### Changed
