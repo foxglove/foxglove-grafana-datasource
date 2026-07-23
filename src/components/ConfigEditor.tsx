@@ -5,8 +5,8 @@ import { MyDataSourceOptions, MySecureJsonData } from '../types';
 
 interface Props extends DataSourcePluginOptionsEditorProps<MyDataSourceOptions, MySecureJsonData> {}
 
-/** Grafana `InlineField` label width (theme units); 14 wraps multi-word labels awkwardly. */
-const configLabelWidth = 22;
+/** Grafana `InlineField` label width (theme units; ×8px). Wide enough for "Query Timeout (seconds)" + tooltip icon. */
+const configLabelWidth = 30;
 
 export function ConfigEditor(props: Props) {
   const { onOptionsChange, options } = props;
