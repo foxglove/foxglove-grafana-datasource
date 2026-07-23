@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## v0.0.9
+
+### Fixed
+
+- Widened ConfigEditor field labels so “Query Timeout (seconds)” no longer wraps and overflows into the Site ID row.
+
+### Changed
+
+- Bumped npm dependencies (`@grafana/data`, `@grafana/runtime`, `@grafana/ui` to ^13.1.1; `dompurify`, `postcss`, `qs`, and `@opentelemetry/core`) via Dependabot.
+- Bumped Go dependencies (`golang.org/x/net`, `golang.org/x/sys`, `golang.org/x/text`).
+- Release CI now requires Grafana plugin signing (`GRAFANA_ACCESS_POLICY_TOKEN` and `MANIFEST.txt`).
+
 ## v0.0.8
 
 ### Changed
