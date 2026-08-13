@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.0.10
+
 ### Changed
 
 - Renamed the query builder selection type from “Message Path” to “FoxQL Expression” (input field labeled “Expression”), matching current FoxQL naming.
