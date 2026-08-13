@@ -9,7 +9,7 @@ export type { Selector };
 
 export interface MessagePathSelection {
   type: 'messagePath';
-  /** Raw message path string entered by the user (stored in the query model). */
+  /** Raw FoxQL expression entered by the user (stored in the query model). */
   messagePath: string;
   /**
    * Parsed wire-format fields. Populated by applyTemplateVariables() before
@@ -17,7 +17,7 @@ export interface MessagePathSelection {
    */
   topic?: string;
   selectorPath?: Selector[];
-  /** The un-parsed message path, used by the backend as a label for the time series. */
+  /** The un-parsed FoxQL expression, used by the backend as a label for the time series. */
   messagePathString?: string;
 }
 
@@ -83,7 +83,7 @@ export interface FilterLeaf {
   op: FilterOp;
   /** Field name for device / event / recording predicates (e.g. "name", "properties.fleet"). */
   field: string;
-  /** Full message path for message predicates (e.g. /imu.accel.x). */
+  /** Full FoxQL expression for message predicates (e.g. /imu.accel.x). */
   messagePath: string;
   value: string;
 }

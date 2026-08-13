@@ -28,7 +28,7 @@ Then, once the plugin is installed, configure the data source with
 | API Key	| (your API key) |
 
 
-You can then query Foxglove using comma-separated lists of device names and message path values.
+You can then query Foxglove using comma-separated lists of device names and [FoxQL](https://docs.foxglove.dev/docs/visualization/foxql) expressions.
 
 ## Using GitHub Actions release workflow
 

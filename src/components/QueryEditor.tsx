@@ -18,7 +18,7 @@ import { FilterEditor } from './FilterEditor';
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
 
 const SELECTION_TYPE_OPTIONS: Array<ComboboxOption<Selection['type']>> = [
-  { label: 'Message Path', value: 'messagePath' },
+  { label: 'FoxQL Expression', value: 'messagePath' },
   { label: 'Device Property', value: 'deviceProperty' },
 ];
 
@@ -168,9 +168,9 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
         {selection.type === 'messagePath' && (
           <InlineField
-            label="Message Path"
-            labelWidth={16}
-            tooltip="e.g. /imu.linear_acceleration.x"
+            label="Expression"
+            labelWidth={14}
+            tooltip="FoxQL expression, e.g. /imu.linear_acceleration.x"
             grow
             invalid={!!messagePathError}
             error={messagePathError}

@@ -13,16 +13,17 @@ test('renders the default query editor sections', async ({
 
   const row = panelEditPage.getQueryEditorRow('A');
   await expect(row.getByText('Selection')).toBeVisible();
-  // "Message Path" is both the default selection-combobox value and the label
-  // of the path input — at least one of them should be visible.
-  await expect(row.getByText('Message Path').first()).toBeVisible();
+  // Selection defaults to "FoxQL Expression"; the expression input is labeled
+  // "Expression".
+  await expect(row.getByText('FoxQL Expression')).toBeVisible();
+  await expect(row.getByText('Expression', { exact: true })).toBeVisible();
   await expect(row.getByText('Group By')).toBeVisible();
   await expect(row.getByText('Aggregation')).toBeVisible();
   await expect(row.getByText('Granularity')).toBeVisible();
   await expect(row.getByText('Filter', { exact: true })).toBeVisible();
 });
 
-test('message path input accepts text', async ({
+test('FoxQL expression input accepts text', async ({
   panelEditPage,
   readProvisionedDataSource,
 }) => {
@@ -30,9 +31,9 @@ test('message path input accepts text', async ({
   await panelEditPage.datasource.set(ds.name);
   const row = panelEditPage.getQueryEditorRow('A');
 
-  const messagePath = row.getByPlaceholder('/topic.field.subfield').first();
-  await messagePath.fill('/imu.linear_acceleration.x');
-  await expect(messagePath).toHaveValue('/imu.linear_acceleration.x');
+  const expression = row.getByPlaceholder('/topic.field.subfield').first();
+  await expression.fill('/imu.linear_acceleration.x');
+  await expect(expression).toHaveValue('/imu.linear_acceleration.x');
 });
 
 test('granularity input accepts a duration string', async ({

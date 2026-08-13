@@ -1,5 +1,5 @@
 /**
- * Converts a parsed MessagePath (from the message-path library) into the
+ * Converts a parsed MessagePath (from the FoxQL / message-path library) into the
  * wire format expected by the Foxglove /v1/data/grafana-plugin-query API
  * selection field.
  */
@@ -115,7 +115,7 @@ export function parseAndConvertMessagePath(raw: string): ConvertResult {
 
   const parsed = parseMessagePath(raw);
   if (!parsed) {
-    return { ok: false, error: `Invalid message path: "${raw}"` };
+    return { ok: false, error: `Invalid FoxQL expression: "${raw}"` };
   }
 
   if (parsed.functionChain && parsed.functionChain.length > 0) {
