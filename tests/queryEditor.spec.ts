@@ -13,10 +13,11 @@ test('renders the default query editor sections', async ({
 
   const row = panelEditPage.getQueryEditorRow('A');
   await expect(row.getByText('Selection')).toBeVisible();
-  // Selection defaults to "FoxQL Expression"; the expression input is labeled
-  // "Expression".
-  await expect(row.getByText('FoxQL Expression')).toBeVisible();
+  // Selection defaults to FoxQL Expression; the input field label is
+  // "Expression" (plain text). The Combobox stores its value in an input, so
+  // getByText may not see "FoxQL Expression".
   await expect(row.getByText('Expression', { exact: true })).toBeVisible();
+  await expect(row.getByDisplayValue('FoxQL Expression')).toBeVisible();
   await expect(row.getByText('Group By')).toBeVisible();
   await expect(row.getByText('Aggregation')).toBeVisible();
   await expect(row.getByText('Granularity')).toBeVisible();
