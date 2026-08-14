@@ -2,7 +2,7 @@ import { DataSourceInstanceSettings, CoreApp, ScopedVars } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv, TemplateSrv } from '@grafana/runtime';
 
 import { intervalStringToNanoseconds } from './intervalNanos';
-import { parseAndConvertMessagePath } from './messagePathSet';
+import { parseAndConvertFoxql } from './foxqlSelection';
 import {
   MyQuery,
   MyDataSourceOptions,
@@ -29,7 +29,7 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
     if (result.selection) {
       if (result.selection.type === 'messagePath') {
         const rawPath = tpl.replace(result.selection.messagePath, scopedVars);
-        const converted = parseAndConvertMessagePath(rawPath);
+        const converted = parseAndConvertFoxql(rawPath);
         result.selection = {
           ...result.selection,
           messagePath: rawPath,
@@ -105,7 +105,7 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
 
 /**
  * Resolve a serialized filter tree into the final API wire format:
- * apply Grafana template variable substitution and parse message paths
+ * apply Grafana template variable substitution and parse FoxQL expressions
  * into topic + selectorPath.
  */
 function resolveFilter(filter: FilterWireSerialized, tpl: TemplateSrv, scopedVars: ScopedVars): FilterWire {
@@ -121,7 +121,7 @@ function resolveFilter(filter: FilterWireSerialized, tpl: TemplateSrv, scopedVar
 
   if (filter.type === 'message') {
     const raw = tpl.replace(filter.messagePath, scopedVars);
-    const parsed = parseAndConvertMessagePath(raw);
+    const parsed = parseAndConvertFoxql(raw);
     return {
       type: 'message',
       op: filter.op,

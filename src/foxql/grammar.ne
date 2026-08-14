@@ -7,20 +7,18 @@
 #   found at http://www.apache.org/licenses/LICENSE-2.0
 #   You may not use this file except in compliance with the License.
 
-# This grammar matches topic/message paths like this:
+# This grammar matches FoxQL expressions like this:
 #
 # /some/topic.sub_msgs[0].some_field
 #
 # The part with slashes is the topic name, and the part after that is the
-# message path. This is a slight break from ROS convention, but makes it
+# field path. This is a slight break from ROS convention, but makes it
 # easier for both humans and computers to understand what's going on.
-#
-# For more examples, please see parseMessagePath.test.js
 main -> topicName messagePath functionChain:?
   {% (d) => ({
     topicName: d[0].value,
     topicNameRepr: d[0].repr,
-    messagePath: d[1],
+    parts: d[1],
     functionChain: d[2] != undefined ? d[2] : undefined
   }) %}
 
@@ -105,7 +103,7 @@ quotedString ->
 # Multiple `messagePathElements`, optionally with an additional dot for autocomplete. When that
 # extra dot is given, make sure to add an empty name field so the path will be marked as invalid,
 # and the autocomplete is actually shown.
-# Return type: `MessagePathPart[]`.
+# Return type: `FoxqlPart[]`.
 messagePath -> messagePathElement:* ".":?
 {%
   (d) =>
@@ -116,7 +114,7 @@ messagePath -> messagePathElement:* ".":?
 
 # An element of the `messagePart`, of the form `field[10:20]{some_id==10}`.
 # Multiple slices are not allowed (no 2d arrays in ROS).
-# Return type: `MessagePathPart`.
+# Return type: `FoxqlPart`.
 messagePathElement ->
 "." name slice:? filter:? {% (d) => [d[1], d[2], d[3]].filter(x => x !== null) %}
 | filter {% id %}

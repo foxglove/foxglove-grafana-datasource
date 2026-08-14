@@ -7,31 +7,31 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-export type MessagePathOperator = "==" | "!=" | "<" | "<=" | ">" | ">=";
+export type FoxqlOperator = "==" | "!=" | "<" | "<=" | ">" | ">=";
 
-export type MessagePathNamePart = {
+export type FoxqlNamePart = {
   type: "name";
   /** Referenced field name */
   name: string;
   /**
-   * Original spelling of the field name in the input message path (for accurate reproduction in
+   * Original spelling of the field name in the input expression (for accurate reproduction in
    * autocomplete and string length)
    */
   repr: string;
 };
 
-export type MessagePathSliceIndex = number | { variableName: string; startLoc: number };
+export type FoxqlSliceIndex = number | { variableName: string; startLoc: number };
 
-export type MessagePathSlicePart = {
+export type FoxqlSlicePart = {
   type: "slice";
-  start: MessagePathSliceIndex;
-  end: MessagePathSliceIndex;
+  start: FoxqlSliceIndex;
+  end: FoxqlSliceIndex;
 };
 
-export type MessagePathFilter = {
+export type FoxqlFilter = {
   type: "filter";
-  operator?: MessagePathOperator;
-  path: MessagePathNamePart[];
+  operator?: FoxqlOperator;
+  path: FoxqlNamePart[];
   value?: number | string | bigint | boolean | { variableName: string; startLoc: number };
   /** True when the filter value is a bare identifier (e.g., `ENUM_NAME` or `true`/`false`). */
   valueIsIdentifier?: boolean;
@@ -40,41 +40,41 @@ export type MessagePathFilter = {
   repr: string; // the original string representation of the filter
 };
 
-// A parsed version of paths.
-export type MessagePathPart = MessagePathNamePart | MessagePathSlicePart | MessagePathFilter;
+/** A parsed segment of a FoxQL expression after the topic. */
+export type FoxqlPart = FoxqlNamePart | FoxqlSlicePart | FoxqlFilter;
 
-export type MessagePathFunction = {
-  /** Message path function to apply (e.g., "rpy", "degrees", "derivative") */
+export type FoxqlFunction = {
+  /** FoxQL function to apply (e.g., "rpy", "degrees", "derivative") */
   function: string;
   /** Optional field access after a struct-returning function, e.g. `roll` in `.@rpy.roll` */
   fieldAccess?: string;
 };
 
-export type MessagePath = {
+/** Parsed FoxQL expression (topic + path parts + optional function chain). */
+export type FoxqlExpression = {
   /** Referenced topic name */
   topicName: string;
   /**
-   * Original spelling of the topic name in the input message path (for accurate reproduction in
+   * Original spelling of the topic name in the input expression (for accurate reproduction in
    * autocomplete and string length)
    */
   topicNameRepr: string;
-  messagePath: MessagePathPart[];
+  parts: FoxqlPart[];
 
   /**
-   * Message path functions to run on output values of the path, evaluated left-to-right.
+   * FoxQL functions to run on output values of the path, evaluated left-to-right.
    * Example: `.@rpy.roll.@degrees` contains two steps.
    */
-  functionChain?: MessagePathFunction[];
+  functionChain?: FoxqlFunction[];
   /**
-   * Stringified message path value. Usually set from the original message path string that
-   * created the MessagePath.
-   * Should be updated if the message path is modified.
-   * Should be able to be used to check equality of message paths.
+   * Stringified FoxQL expression. Usually set from the original input string that
+   * created this value. Should be updated if the expression is modified.
+   * Should be able to be used to check equality of expressions.
    */
-  stringifiedMessagePath: string;
+  stringified: string;
 
   /**
-   * Indicates if the message path is fully specified or if it contains unresolved
+   * Indicates if the expression is fully specified or if it contains unresolved
    * names or filters. The grammar allows half-empty filter and names to support
    * autocomplete.
    *

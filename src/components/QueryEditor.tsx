@@ -3,7 +3,7 @@ import { Combobox, type ComboboxOption, InlineField, InlineFieldRow, Input, Stac
 import { QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
 import { intervalStringToNanoseconds } from '../intervalNanos';
-import { parseAndConvertMessagePath } from '../messagePathSet';
+import { parseAndConvertFoxql } from '../foxqlSelection';
 import {
   MyDataSourceOptions,
   MyQuery,
@@ -45,17 +45,17 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
   const selection = query.selection ?? { type: 'messagePath', messagePath: '' };
   const groupBy = query.groupBy ?? { type: 'deviceId' };
 
-  const rawMessagePath = selection.type === 'messagePath' ? selection.messagePath : '';
-  const messagePathError = useMemo(() => {
-    if (!rawMessagePath) {
+  const rawExpression = selection.type === 'messagePath' ? selection.messagePath : '';
+  const expressionError = useMemo(() => {
+    if (!rawExpression) {
       return undefined;
     }
-    if (rawMessagePath.includes('$')) {
+    if (rawExpression.includes('$')) {
       return undefined;
     }
-    const result = parseAndConvertMessagePath(rawMessagePath);
+    const result = parseAndConvertFoxql(rawExpression);
     return result.ok ? undefined : result.error;
-  }, [rawMessagePath]);
+  }, [rawExpression]);
 
   const rawInterval = query.aggregation?.interval ?? '';
   const intervalError = useMemo(() => validateIntervalString(rawInterval), [rawInterval]);
@@ -77,7 +77,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     onChange({ ...query, ...updates });
   };
 
-  const onMessagePathChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const onExpressionChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (selection.type !== 'messagePath') {
       return;
     }
@@ -172,15 +172,15 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
             labelWidth={14}
             tooltip="FoxQL expression, e.g. /imu.linear_acceleration.x"
             grow
-            invalid={!!messagePathError}
-            error={messagePathError}
+            invalid={!!expressionError}
+            error={expressionError}
           >
             <Input
               value={selection.messagePath}
-              onChange={onMessagePathChange}
+              onChange={onExpressionChange}
               onBlur={runOnBlur}
               placeholder="/topic.field.subfield"
-              invalid={!!messagePathError}
+              invalid={!!expressionError}
             />
           </InlineField>
         )}

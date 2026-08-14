@@ -11,7 +11,7 @@ import { Grammar, Parser } from "nearley";
 
 import grammar from "./grammar";
 import { parseFunction } from "./parseFunction";
-import type { MessagePath, MessagePathFilter } from "./types";
+import type { FoxqlExpression, FoxqlFilter } from "./types";
 
 const grammarObj = Grammar.fromCompiled(grammar);
 /**
@@ -20,7 +20,7 @@ const grammarObj = Grammar.fromCompiled(grammar);
  */
 export const STRUCT_FUNCTION_NAMES = new Set(["rpy", "quat"]);
 
-const parseMessagePath = (path: string): MessagePath | undefined => {
+const parseFoxql = (path: string): FoxqlExpression | undefined => {
   // Need to create a new Parser object for every new string to parse (should be cheap).
   const parser = new Parser(grammarObj);
   try {
@@ -28,15 +28,15 @@ const parseMessagePath = (path: string): MessagePath | undefined => {
     if (result === undefined) {
       return result;
     }
-    if (!isFunctionChainSemanticallyValid(result as MessagePath)) {
+    if (!isFunctionChainSemanticallyValid(result as FoxqlExpression)) {
       return undefined;
     }
 
-    const isFullySpecified = isMessagePathFullySpecified(result as MessagePath);
+    const isFullySpecified = isFoxqlFullySpecified(result as FoxqlExpression);
 
     return {
       ...result,
-      stringifiedMessagePath: path,
+      stringified: path,
       isFullySpecified,
     };
   } catch (_err) {
@@ -49,11 +49,11 @@ const parseMessagePath = (path: string): MessagePath | undefined => {
  * functions). Ordering constraints (e.g. derivative/delta must be last) are enforced by
  * consumers like `isValidMathFunctionWithFieldAccess` in the Plot panel.
  */
-function isFunctionChainSemanticallyValid(messagePath: MessagePath): boolean {
-  if (messagePath.functionChain === undefined) {
+function isFunctionChainSemanticallyValid(expression: FoxqlExpression): boolean {
+  if (expression.functionChain === undefined) {
     return true;
   }
-  for (const step of messagePath.functionChain) {
+  for (const step of expression.functionChain) {
     if (step.fieldAccess === undefined) {
       continue;
     }
@@ -68,21 +68,21 @@ function isFunctionChainSemanticallyValid(messagePath: MessagePath): boolean {
   return true;
 }
 
-function isFilterMissingOperatorOrValue(filter: MessagePathFilter): boolean {
+function isFilterMissingOperatorOrValue(filter: FoxqlFilter): boolean {
   // Empty filters ({} or {foo} or {bar==}) intentionally omit operator/value for autocomplete
   return filter.operator === undefined || filter.value === undefined;
 }
 
 /**
- * The message path grammar allows half-empty filters and names to support autocomplete.
- * This function checks if a parsed message path is fully specified and does not contain any
+ * The FoxQL grammar allows half-empty filters and names to support autocomplete.
+ * This function checks if a parsed expression is fully specified and does not contain any
  * unfinished names or filters.
  *
- * @param parsedMessagePath - The parsed message path to check.
- * @returns True if the message path is fully specified, false otherwise.
+ * @param parsed - The parsed FoxQL expression to check.
+ * @returns True if the expression is fully specified, false otherwise.
  */
-function isMessagePathFullySpecified(parsedMessagePath: MessagePath): boolean {
-  for (const part of parsedMessagePath.messagePath) {
+function isFoxqlFullySpecified(parsed: FoxqlExpression): boolean {
+  for (const part of parsed.parts) {
     if (part.type === "name") {
       // Check for unfinished names (trailing dot)
       if (part.name === "") {
@@ -99,8 +99,8 @@ function isMessagePathFullySpecified(parsedMessagePath: MessagePath): boolean {
     }
     // slices are ignored for autocomplete validation here. These should be handled by the grammar.
   }
-  if (parsedMessagePath.functionChain !== undefined) {
-    for (const step of parsedMessagePath.functionChain) {
+  if (parsed.functionChain !== undefined) {
+    for (const step of parsed.functionChain) {
       if (step.function === "") {
         return false;
       }
@@ -112,4 +112,4 @@ function isMessagePathFullySpecified(parsedMessagePath: MessagePath): boolean {
   return true;
 }
 
-export { parseMessagePath };
+export { parseFoxql };

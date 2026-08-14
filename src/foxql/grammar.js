@@ -10,7 +10,7 @@ var grammar = {
     {"name": "main", "symbols": ["topicName", "messagePath", "main$ebnf$1"], "postprocess":  (d) => ({
           topicName: d[0].value,
           topicNameRepr: d[0].repr,
-          messagePath: d[1],
+          parts: d[1],
           functionChain: d[2] != undefined ? d[2] : undefined
         }) },
     {"name": "id$ebnf$1", "symbols": [/[a-zA-Z0-9_-]/]},
