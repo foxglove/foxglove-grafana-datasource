@@ -199,7 +199,7 @@ function FilterLeafEditor({ leaf, onChange, onRemove }: FilterLeafEditorProps) {
     onChange({ ...leaf, field: e.target.value });
   };
 
-  const onMessagePathChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const onExpressionChange = (e: ChangeEvent<HTMLInputElement>) => {
     onChange({ ...leaf, messagePath: e.target.value });
   };
 
@@ -218,7 +218,7 @@ function FilterLeafEditor({ leaf, onChange, onRemove }: FilterLeafEditorProps) {
       {isMessage ? (
         <Input
           value={leaf.messagePath}
-          onChange={onMessagePathChange}
+          onChange={onExpressionChange}
           placeholder="/topic.field.subfield"
           width={24}
         />

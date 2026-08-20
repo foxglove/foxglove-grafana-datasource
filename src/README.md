@@ -19,7 +19,7 @@ Then, once the plugin is installed, configure the data source with
 | API Base URL | https://api.foxglove.dev |
 | API Key      | (your API key)           |
 
-You can then query Foxglove using comma-separated lists of device names and [message path](https://docs.foxglove.dev/docs/visualization/message-path-syntax) values.
+You can then query Foxglove using comma-separated lists of device names and [FoxQL](https://docs.foxglove.dev/docs/visualization/foxql) expressions.
 
 ### Limitations
 

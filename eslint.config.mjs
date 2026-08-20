@@ -33,7 +33,7 @@ export default defineConfig([
       'playwright/.auth/',
       '**/.idea',
       '**/.eslintcache',
-      'src/message-path/grammar.js',
+      'src/foxql/grammar.js',
     ],
   },
   ...baseConfig,

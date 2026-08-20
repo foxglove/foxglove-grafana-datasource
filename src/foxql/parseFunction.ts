@@ -1,7 +1,7 @@
-type ParsedMessagePathFunction = { name: string; operand?: number; operandRaw?: string };
+type ParsedFoxqlFunction = { name: string; operand?: number; operandRaw?: string };
 const FUNCTION_WITH_ARG_PATTERN = /^([a-zA-Z0-9_-]+)(?:\((.*)\))?$/;
 
-export function parseFunction(pathFunction: string): ParsedMessagePathFunction | undefined {
+export function parseFunction(pathFunction: string): ParsedFoxqlFunction | undefined {
   if (pathFunction.length === 0) {
     return undefined;
   }

@@ -3,13 +3,13 @@ import { DataQuery } from '@grafana/schema';
 
 // --- Selection types ---
 
-import type { Selector } from './messagePathSet';
+import type { Selector } from './foxqlSelection';
 
 export type { Selector };
 
-export interface MessagePathSelection {
+export interface FoxqlSelection {
   type: 'messagePath';
-  /** Raw message path string entered by the user (stored in the query model). */
+  /** Raw FoxQL expression entered by the user (stored in the query model). */
   messagePath: string;
   /**
    * Parsed wire-format fields. Populated by applyTemplateVariables() before
@@ -17,7 +17,7 @@ export interface MessagePathSelection {
    */
   topic?: string;
   selectorPath?: Selector[];
-  /** The un-parsed message path, used by the backend as a label for the time series. */
+  /** The un-parsed FoxQL expression, used by the backend as a label for the time series. */
   messagePathString?: string;
 }
 
@@ -26,7 +26,7 @@ export interface DevicePropertySelection {
   key: string;
 }
 
-export type Selection = MessagePathSelection | DevicePropertySelection;
+export type Selection = FoxqlSelection | DevicePropertySelection;
 
 // --- GroupBy types ---
 
@@ -70,7 +70,7 @@ export interface GranularityWire {
 // serializeFilterNode converts to FilterWireSerialized (binary left/right
 // tree, message predicates carry raw messagePath strings).
 // replaceFilterVars() in datasource.ts resolves template variables and
-// parses message paths, producing the final FilterWire sent to the API.
+// parses FoxQL expressions, producing the final FilterWire sent to the API.
 // ---------------------------------------------------------------------------
 
 export type FilterOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'in';
@@ -83,7 +83,7 @@ export interface FilterLeaf {
   op: FilterOp;
   /** Field name for device / event / recording predicates (e.g. "name", "properties.fleet"). */
   field: string;
-  /** Full message path for message predicates (e.g. /imu.accel.x). */
+  /** Full FoxQL expression for message predicates (e.g. /imu.accel.x). */
   messagePath: string;
   value: string;
 }
@@ -101,7 +101,7 @@ export type FilterNode = FilterLeaf | FilterGroup;
 //
 // Two phases: "serialized" (output of serializeFilterNode, message predicates
 // still carry the raw messagePath string) and "resolved" (after template
-// variable substitution + message path parsing — what the API receives).
+// variable substitution + FoxQL parsing — what the API receives).
 // ---------------------------------------------------------------------------
 
 type FieldPredicateType = 'device' | 'event' | 'recording';
@@ -122,7 +122,7 @@ export interface FilterWireMessageRaw {
   value: string | string[];
 }
 
-/** Resolved message predicate — messagePath parsed into topic + selectorPath. */
+/** Resolved message predicate — FoxQL expression parsed into topic + selectorPath. */
 export interface FilterWireMessageResolved {
   type: 'message';
   op: FilterOp;
