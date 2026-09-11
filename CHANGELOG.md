@@ -7,6 +7,7 @@
 ### Changed
 
 - Renamed the query builder selection type from “Message Path” to “FoxQL Expression” (input field labeled “Expression”), matching current FoxQL naming.
+- Documented the current API key capabilities (`data.search`, `devices.list`) and data source settings (Project ID, Site ID, Query Timeout). Grouping, aggregation, and filtering are supported; the old README limitation that said they were not has been removed.
 
 ## v0.0.9
 
