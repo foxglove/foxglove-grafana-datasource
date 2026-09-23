@@ -40,3 +40,5 @@ Pushing a `v*` tag, or running the Release workflow manually, still builds and p
 Signing uses the Grafana access policy token stored as the repository secret `GRAFANA_ACCESS_POLICY_TOKEN`. Generate a token with `plugins:write` scope from the Grafana Cloud account that owns the plugin, then add it under **Settings → Secrets and variables → Actions**. See [Sign a plugin](https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin#generate-an-access-policy-token).
 
 The release job fails if that secret is missing or if signing does not produce a `MANIFEST.txt`. Use the zip and sha1 URLs from the GitHub release for Grafana plugin catalog submission. If publishing fails after the tag already exists, re-run the Release workflow manually for that commit.
+
+GitHub runs one release at a time and keeps at most one more waiting. A newer waiting release replaces an older waiting one. If a release run is cancelled, re-run it, or run the Release workflow manually for that commit. The manual `commit_sha` input builds that commit and still loads the release scripts from the workflow revision.

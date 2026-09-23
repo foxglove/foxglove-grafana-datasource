@@ -30,6 +30,9 @@ jobs:
         id: detect
         env:
           BEFORE_SHA: ${{ github.event.before }}
+          # gh does not read GITHUB_TOKEN. Without GH_TOKEN the tag lookup fails
+          # and a real version bump never publishes.
+          GH_TOKEN: ${{ github.token }}
         run: bash .github/scripts/detect-version-bump.sh
 
   release:

@@ -32,8 +32,9 @@ on:
         required: true
         type: string
 
-# Serialize publishes so a version bump and a tag push cannot release at once.
-# cancel-in-progress is false so a queued release is not dropped.
+# One release runs at a time. cancel-in-progress is false so the active run
+# finishes. GitHub still keeps only one pending run: a newer queued release
+# replaces an older one that has not started.
 concurrency:
   group: plugin-release
   cancel-in-progress: false
@@ -87,7 +88,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          release_tag="$(bash "${GITHUB_WORKSPACE}/.github/scripts/resolve-release-tag.sh")"
+          # Load the helper from the workflow revision (GITHUB_SHA), not from the
+          # checked-out commit. A manual commit_sha can point at an older commit
+          # that does not contain this script.
+          resolve_script="${RUNNER_TEMP}/resolve-release-tag.sh"
+          gh api -H "Accept: application/vnd.github.raw" \
+            "/repos/${GITHUB_REPOSITORY}/contents/.github/scripts/resolve-release-tag.sh?ref=${GITHUB_SHA}" \
+            > "${resolve_script}"
+          release_tag="$(bash "${resolve_script}")"
           echo "Release tag: ${release_tag}"
 
           rm -f "${ORIGINAL_ARCHIVE}" "${ORIGINAL_SHA1SUM}"
@@ -117,6 +125,7 @@ jobs:
           PLUGIN_VERSION: ${{ steps.package-plugin.outputs.plugin-version }}
           RELEASE_DIR: foxglovedev-foxglove-datasource
           RELEASE_TAG: ${{ inputs.tag_name }}
+          GH_TOKEN: ${{ github.token }}
 
       - name: Create Github release
         uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2

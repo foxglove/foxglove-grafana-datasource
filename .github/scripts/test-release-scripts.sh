@@ -174,6 +174,12 @@ fake_bin="${tmp}/bin"
 mkdir -p "${fake_bin}"
 cat >"${fake_bin}/gh" <<'EOF'
 #!/usr/bin/env bash
+# Matches gh on a GitHub-hosted runner: GITHUB_ACTIONS is set, and gh refuses
+# to run until GH_TOKEN is set. It does not read GITHUB_TOKEN.
+if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -z "${GH_TOKEN:-}" ]; then
+  echo "gh: To use GitHub CLI in a GitHub Actions workflow, set the GH_TOKEN environment variable" >&2
+  exit 4
+fi
 case "${FAKE_GH_MODE}" in
   missing)
     echo "gh: Not Found (HTTP 404)" >&2
@@ -229,6 +235,39 @@ api_error_status=$?
 set -e
 [ "${api_error_status}" -ne 0 ] || fail "tag lookup failure should fail the script"
 printf '%s\n' "${api_error}" | grep -q 'Could not check tag' || fail "tag lookup failure should include the API error"
+
+grep -Fq 'GH_TOKEN: ${{ github.token }}' "${bump_workflow}" || fail "detect step must set GH_TOKEN"
+grep -Fq 'resolve-release-tag.sh?ref=${GITHUB_SHA}' "${release_workflow}" || fail "release must load the tag script from the workflow revision"
+grep -Fq 'GH_TOKEN: ${{ github.token }}' "${release_workflow}" || fail "release tag lookup must set GH_TOKEN"
+
+# The detect step's environment, plus the variables Actions sets itself.
+# GH_TOKEN is included only when the workflow sets it, so removing that line fails CI.
+workflow_detect_env=(
+  PATH="${fake_bin}:${PATH}"
+  GITHUB_REPOSITORY="octo/repo"
+  GITHUB_ACTIONS="true"
+  FAKE_GH_MODE="missing"
+)
+if grep -Fq 'GH_TOKEN: ${{ github.token }}' "${bump_workflow}"; then
+  workflow_detect_env+=(GH_TOKEN="workflow-token")
+fi
+output="${tmp}/out-workflow-env"
+log=$(run_detect "${tmp}/api" "${parent}" "${output}" "${workflow_detect_env[@]}")
+assert_eq "$(output_value "${output}" should_release)" "true" "detect step environment can see an existing-tag miss"
+printf '%s\n' "${log}" >/dev/null
+
+set +e
+no_token=$(
+  run_detect "${tmp}/api" "${parent}" "${tmp}/out-no-token" \
+    PATH="${fake_bin}:${PATH}" \
+    GITHUB_REPOSITORY="octo/repo" \
+    GITHUB_ACTIONS="true" \
+    FAKE_GH_MODE="missing" 2>&1
+)
+no_token_status=$?
+set -e
+[ "${no_token_status}" -ne 0 ] || fail "Actions without GH_TOKEN should fail the tag lookup"
+printf '%s\n' "${no_token}" | grep -q 'GH_TOKEN' || fail "missing GH_TOKEN should surface the gh error"
 
 grep -q 'workflow_call:' "${release_workflow}" || fail "release workflow should be callable"
 grep -q 'make_latest: "true"' "${release_workflow}" || fail "release should be marked latest"
