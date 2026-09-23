@@ -1,0 +1,44 @@
+# Publishes a release when package.json version increases on main.
+#
+# The release workflow creates the git tag via the GitHub API after the signed
+# build succeeds. A tag push made with the default GITHUB_TOKEN does not start
+# other workflows, so this workflow calls the release workflow directly instead
+# of pushing the tag and waiting for the v* trigger.
+name: Release on version bump
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.detect.outputs.should_release }}
+      release_tag: ${{ steps.detect.outputs.release_tag }}
+      commit_sha: ${{ steps.detect.outputs.commit_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect version bump
+        id: detect
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: bash .github/scripts/detect-version-bump.sh
+
+  release:
+    needs: detect
+    if: needs.detect.outputs.should_release == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag_name: ${{ needs.detect.outputs.release_tag }}
+      commit_sha: ${{ needs.detect.outputs.commit_sha }}
+    secrets: inherit

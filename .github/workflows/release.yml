@@ -1,5 +1,10 @@
-# This GitHub Action automates the process of building Grafana plugins.
+# Builds, signs, and publishes a Grafana plugin release.
 # (For more information, see https://github.com/grafana/plugin-actions/blob/main/build-plugin/README.md)
+#
+# The git tag is created when the GitHub release is published, after signing
+# succeeds. Callers that detect a version bump on main invoke this workflow
+# with workflow_call instead of pushing the tag themselves: a tag push from
+# the default GITHUB_TOKEN does not start workflows.
 name: Release
 
 on:
@@ -9,11 +14,32 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag to create/use for the draft release. Defaults to v<plugin version>.'
+        description: 'Tag to create for the release. Defaults to v<plugin version>.'
         required: false
         type: string
+      commit_sha:
+        description: 'Commit to build and tag. Defaults to the workflow SHA.'
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      tag_name:
+        description: 'Tag to create for the release. Must be v<plugin version>.'
+        required: true
+        type: string
+      commit_sha:
+        description: 'Commit to build and tag.'
+        required: true
+        type: string
 
-permissions: read-all
+# Serialize publishes so a version bump and a tag push cannot release at once.
+# cancel-in-progress is false so a queued release is not dropped.
+concurrency:
+  group: plugin-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   release:
@@ -25,6 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.commit_sha || github.sha }}
           persist-credentials: false
 
       - name: Require Grafana access policy token
@@ -60,17 +87,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          expected_tag="v${PLUGIN_VERSION}"
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            release_tag="${RELEASE_TAG:-$expected_tag}"
-          else
-            release_tag="${GITHUB_REF_NAME}"
-          fi
-
-          if [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ] && [ "$expected_tag" != "$release_tag" ]; then
-            printf "Plugin version does not match tag name. The tag should be v%s\n" "${PLUGIN_VERSION}"
-            exit 1
-          fi
+          release_tag="$(bash "${GITHUB_WORKSPACE}/.github/scripts/resolve-release-tag.sh")"
+          echo "Release tag: ${release_tag}"
 
           rm -f "${ORIGINAL_ARCHIVE}" "${ORIGINAL_SHA1SUM}"
           if [ "${PLUGIN_ID}" != "${RELEASE_DIR}" ]; then
@@ -91,6 +109,7 @@ jobs:
           echo "archive=${archive}" >> "$GITHUB_OUTPUT"
           echo "archive-sha1sum=${archive_sha1sum}" >> "$GITHUB_OUTPUT"
           echo "release-tag=${release_tag}" >> "$GITHUB_OUTPUT"
+          echo "commit-sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
         env:
           ORIGINAL_ARCHIVE: ${{ steps.package-plugin.outputs.archive }}
           ORIGINAL_SHA1SUM: ${{ steps.package-plugin.outputs.archive-sha1sum }}
@@ -102,10 +121,11 @@ jobs:
       - name: Create Github release
         uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
         with:
-          draft: true
+          draft: false
+          make_latest: "true"
           generate_release_notes: true
           tag_name: ${{ steps.release-package.outputs.release-tag }}
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ steps.release-package.outputs.commit-sha }}
           files: |
             ./${{ steps.release-package.outputs.archive }}
             ./${{ steps.release-package.outputs.archive-sha1sum }}

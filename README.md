@@ -31,8 +31,12 @@ You can then query Foxglove using [FoxQL](https://docs.foxglove.dev/docs/visuali
 
 ## Using GitHub Actions release workflow
 
-Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml) when you push a `v*` tag (or run the workflow manually). The workflow packages the plugin, **signs it for public distribution**, and creates a draft GitHub release with the zip and sha1 artifacts.
+Releases are published by [`.github/workflows/release.yml`](.github/workflows/release.yml).
+
+A push to `main` that increases the `version` in `package.json` (for example `0.0.10` to `0.0.11`) publishes a release. [`.github/workflows/release-on-version-bump.yml`](.github/workflows/release-on-version-bump.yml) compares that field with the previous commit on `main`. Other `package.json` edits, such as dependency bumps, do not publish a release. The version must be `MAJOR.MINOR.PATCH` and greater than the previous version. The workflow builds and signs the plugin, creates tag `v<version>` on that commit, and marks the GitHub release as latest. The tag is created only after the signed build succeeds. If `v<version>` already exists, that push does not publish another release.
+
+Pushing a `v*` tag, or running the Release workflow manually, still builds and publishes. On those runs the tag must be `v` plus the `package.json` version, unless the manual run sets a different tag.
 
 Signing uses the Grafana access policy token stored as the repository secret `GRAFANA_ACCESS_POLICY_TOKEN`. Generate a token with `plugins:write` scope from the Grafana Cloud account that owns the plugin, then add it under **Settings → Secrets and variables → Actions**. See [Sign a plugin](https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin#generate-an-access-policy-token).
 
-The release job fails if that secret is missing or if signing does not produce a `MANIFEST.txt`. After publishing the draft release, use the zip and sha1 URLs for Grafana plugin catalog submission.
+The release job fails if that secret is missing or if signing does not produce a `MANIFEST.txt`. Use the zip and sha1 URLs from the GitHub release for Grafana plugin catalog submission. If publishing fails after the tag already exists, re-run the Release workflow manually for that commit.
