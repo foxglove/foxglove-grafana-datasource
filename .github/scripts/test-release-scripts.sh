@@ -34,7 +34,7 @@ bash -n "${detect}"
 bash -n "$0"
 
 run_resolve() {
-  env \
+  env -u GITHUB_ACTIONS -u GH_TOKEN \
     PLUGIN_VERSION="$1" \
     RELEASE_TAG="$2" \
     GITHUB_EVENT_NAME="$3" \
@@ -89,7 +89,10 @@ run_detect() {
   shift 3
   (
     cd "${repo}"
-    env BEFORE_SHA="${before}" GITHUB_OUTPUT="${output}" "$@" bash "${detect}"
+    # Drop the runner's GITHUB_ACTIONS and GH_TOKEN so only values passed by
+    # the test are visible. Otherwise every API case fails in CI.
+    env -u GITHUB_ACTIONS -u GH_TOKEN \
+      BEFORE_SHA="${before}" GITHUB_OUTPUT="${output}" "$@" bash "${detect}"
   )
 }
 
