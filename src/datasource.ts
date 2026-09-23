@@ -1,17 +1,11 @@
 import { DataSourceInstanceSettings, CoreApp, ScopedVars } from '@grafana/data';
-import { DataSourceWithBackend, getTemplateSrv, TemplateSrv } from '@grafana/runtime';
+import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 
 import { intervalStringToNanoseconds } from './intervalNanos';
 import { parseAndConvertFoxql } from './foxqlSelection';
-import {
-  MyQuery,
-  MyDataSourceOptions,
-  DEFAULT_QUERY,
-  FilterWire,
-  FilterWireSerialized,
-  serializeFilterNode,
-  FilterNode,
-} from './types';
+import { compileFilterText } from './queryText/compileFilter';
+import { filterNodeToText } from './queryText/migrateFilter';
+import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY } from './types';
 
 export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptions> {
   constructor(instanceSettings: DataSourceInstanceSettings<MyDataSourceOptions>) {
@@ -52,9 +46,17 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
       result.groupBy = groupBy;
     }
 
-    if (result.filter && !isEmptyFilter(result.filter)) {
-      const serialized = serializeFilterNode(result.filter);
-      result.filterWire = resolveFilter(serialized, tpl, scopedVars);
+    delete result.filterWire;
+    delete result.filterError;
+    const filterSource = typeof result.filterText === 'string' ? result.filterText : filterNodeToText(result.filter);
+    const substitutedFilter = tpl.replace(filterSource, scopedVars);
+    if (substitutedFilter.trim() !== '') {
+      const compiled = compileFilterText(substitutedFilter);
+      if (!compiled.ok) {
+        result.filterError = compiled.error.message;
+      } else if (compiled.filter) {
+        result.filterWire = compiled.filter;
+      }
     }
 
     if (result.aggregation) {
@@ -101,59 +103,4 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
     }
     return true;
   }
-}
-
-/**
- * Resolve a serialized filter tree into the final API wire format:
- * apply Grafana template variable substitution and parse FoxQL expressions
- * into topic + selectorPath.
- */
-function resolveFilter(filter: FilterWireSerialized, tpl: TemplateSrv, scopedVars: ScopedVars): FilterWire {
-  if (filter.type === 'and' || filter.type === 'or') {
-    return {
-      type: filter.type,
-      left: resolveFilter(filter.left, tpl, scopedVars),
-      right: resolveFilter(filter.right, tpl, scopedVars),
-    };
-  }
-
-  const resolvedValue = resolveValue(filter.op, tpl.replace(filter.value as string, scopedVars));
-
-  if (filter.type === 'message') {
-    const raw = tpl.replace(filter.messagePath, scopedVars);
-    const parsed = parseAndConvertFoxql(raw);
-    return {
-      type: 'message',
-      op: filter.op,
-      topic: parsed.ok ? parsed.parsed.topic : '',
-      selectorPath: parsed.ok ? parsed.parsed.selectorPath : [],
-      value: resolvedValue,
-    };
-  }
-
-  return {
-    type: filter.type,
-    op: filter.op,
-    field: tpl.replace(filter.field, scopedVars),
-    value: resolvedValue,
-  };
-}
-
-/** For 'in' ops, split comma-separated string into an array; otherwise pass through. */
-function resolveValue(op: string, raw: string): string | string[] {
-  if (op === 'in') {
-    return raw
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  return raw;
-}
-
-/** A filter is "empty" when the user hasn't configured any meaningful conditions. */
-function isEmptyFilter(node: FilterNode): boolean {
-  if (node.kind === 'leaf') {
-    return node.value === '';
-  }
-  return node.children.every(isEmptyFilter);
 }

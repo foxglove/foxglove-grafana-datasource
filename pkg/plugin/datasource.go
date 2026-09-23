@@ -80,6 +80,7 @@ func getAPIBaseURL(config *models.PluginSettings) string {
 type queryModel struct {
 	Selection       json.RawMessage `json:"selection"`
 	FilterWire      json.RawMessage `json:"filterWire"`
+	FilterError     string          `json:"filterError,omitempty"`
 	GroupBy         json.RawMessage `json:"groupBy"`
 	AggregationWire json.RawMessage `json:"aggregationWire,omitempty"`
 	GranularityWire json.RawMessage `json:"granularityWire,omitempty"`
@@ -124,6 +125,9 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 
 	if len(qm.Selection) == 0 || string(qm.Selection) == "null" {
 		return backend.ErrDataResponse(backend.StatusBadRequest, "selection is required")
+	}
+	if qm.FilterError != "" {
+		return backend.ErrDataResponse(backend.StatusBadRequest, qm.FilterError)
 	}
 
 	config, err := models.LoadPluginSettings(*pCtx.DataSourceInstanceSettings)

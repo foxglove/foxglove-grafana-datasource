@@ -42,7 +42,7 @@ The query editor supports:
 - **Selection**: a FoxQL expression or a numeric device property
 - **Group By**: device or device property (FoxQL selections only)
 - **Aggregation**: last, first, max, min, sum, average, median, and percentiles
-- **Filters**: predicates on devices, messages, events, and recordings
+- **Filters**: the same filter text as Foxglove Search, for example `@device.name == husky` or `/battery.percentage < 20`
 - **Granularity**: bin width for evaluating filter conditions
 
 See [Building queries](https://docs.foxglove.dev/docs/grafana/queries) for filters, grouping, aggregation, and examples.

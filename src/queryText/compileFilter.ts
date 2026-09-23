@@ -1,0 +1,142 @@
+import { parseAndConvertFoxql } from '../foxqlSelection';
+import type { FilterWire } from '../types';
+
+import { isLogicNode, type QueryNode } from './ast';
+import { entityFieldToWire, isEntityFieldText, parseFieldKey } from './entityFields';
+import { VALUELESS_OPERATORS, type FilterTextOp } from './operators';
+import { parseQuery } from './parser';
+
+export type FilterTextError = {
+  message: string;
+  index: number;
+};
+
+export type CompileFilterResult = { ok: true; filter?: FilterWire } | { ok: false; error: FilterTextError };
+
+const VISUAL_MESSAGE = 'Visual search is not supported in Grafana filters.';
+const TOPIC_VALUE_MESSAGE = 'Topic comparisons only support exists. Compare a field to filter on a value.';
+
+/**
+ * Compile filter text into the wire predicate sent to the Foxglove API.
+ * Empty text compiles to no filter. A failure leaves the filter unset so the
+ * query is not run without the condition the user wrote.
+ */
+export function compileFilterText(source: string): CompileFilterResult {
+  if (source.trim() === '') {
+    return { ok: true };
+  }
+  const parsed = parseQuery(source);
+  if (!parsed.ok) {
+    return { ok: false, error: parsed.error };
+  }
+  if (parsed.query === undefined) {
+    return { ok: true };
+  }
+  return compileNode(parsed.query);
+}
+
+/**
+ * Editor validation. Text that still contains a Grafana template variable is
+ * skipped, because substitution happens when the query runs.
+ */
+export function filterTextError(source: string): FilterTextError | undefined {
+  if (source.trim() === '' || source.includes('$')) {
+    return undefined;
+  }
+  const compiled = compileFilterText(source);
+  return compiled.ok ? undefined : compiled.error;
+}
+
+function compileNode(node: QueryNode): CompileFilterResult {
+  if (node.type === 'semantic') {
+    return { ok: false, error: { message: VISUAL_MESSAGE, index: 0 } };
+  }
+  if (isLogicNode(node)) {
+    const left = compileNode(node.left);
+    if (!left.ok) {
+      return left;
+    }
+    const right = compileNode(node.right);
+    if (!right.ok) {
+      return right;
+    }
+    if (left.filter === undefined || right.filter === undefined) {
+      return { ok: false, error: { message: 'Invalid query', index: 0 } };
+    }
+    return { ok: true, filter: { type: node.type, left: left.filter, right: right.filter } };
+  }
+  return compileComparison(node.field, node.operator, node.value);
+}
+
+function compileComparison(field: string, operator: FilterTextOp, value: string | undefined): CompileFilterResult {
+  if (!VALUELESS_OPERATORS.has(operator) && (value === undefined || value === '')) {
+    return { ok: false, error: { message: 'Enter a value', index: 0 } };
+  }
+  if (operator === 'in' && splitInValues(value ?? '').length === 0) {
+    return { ok: false, error: { message: 'Enter a value', index: 0 } };
+  }
+  if (isEntityFieldText(field)) {
+    return compileEntity(field, operator, value);
+  }
+  return compileMessage(field, operator, value);
+}
+
+function compileEntity(field: string, operator: FilterTextOp, value: string | undefined): CompileFilterResult {
+  const key = parseFieldKey(entityFieldToWire(field));
+  if (key === undefined) {
+    return { ok: false, error: { message: `Unknown field "${field}"`, index: 0 } };
+  }
+  if (VALUELESS_OPERATORS.has(operator)) {
+    return { ok: true, filter: { type: key.predicateType, op: operator, field: key.field } };
+  }
+  return {
+    ok: true,
+    filter: {
+      type: key.predicateType,
+      op: operator,
+      field: key.field,
+      value: operator === 'in' ? splitInValues(value ?? '') : value,
+    },
+  };
+}
+
+function compileMessage(field: string, operator: FilterTextOp, value: string | undefined): CompileFilterResult {
+  const parsed = parseAndConvertFoxql(field);
+  if (!parsed.ok) {
+    return { ok: false, error: { message: parsed.error, index: 0 } };
+  }
+  if (parsed.parsed.selectorPath.length === 0) {
+    if (operator === 'is-not-null') {
+      return { ok: true, filter: { type: 'topic-exists', topic: parsed.parsed.topic } };
+    }
+    return { ok: false, error: { message: TOPIC_VALUE_MESSAGE, index: 0 } };
+  }
+  if (VALUELESS_OPERATORS.has(operator)) {
+    return {
+      ok: true,
+      filter: {
+        type: 'message',
+        op: operator,
+        topic: parsed.parsed.topic,
+        selectorPath: parsed.parsed.selectorPath,
+      },
+    };
+  }
+  return {
+    ok: true,
+    filter: {
+      type: 'message',
+      op: operator,
+      topic: parsed.parsed.topic,
+      selectorPath: parsed.parsed.selectorPath,
+      value: operator === 'in' ? splitInValues(value ?? '') : value,
+    },
+  };
+}
+
+function splitInValues(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part !== '');
+}

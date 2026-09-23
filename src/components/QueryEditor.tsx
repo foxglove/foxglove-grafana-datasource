@@ -4,16 +4,10 @@ import { QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
 import { intervalStringToNanoseconds } from '../intervalNanos';
 import { parseAndConvertFoxql } from '../foxqlSelection';
-import {
-  MyDataSourceOptions,
-  MyQuery,
-  Selection,
-  GroupBy,
-  AggregationType,
-  FilterNode,
-  DEFAULT_QUERY,
-} from '../types';
-import { FilterEditor } from './FilterEditor';
+import { filterTextError } from '../queryText/compileFilter';
+import { filterNodeToText } from '../queryText/migrateFilter';
+import { MyDataSourceOptions, MyQuery, Selection, GroupBy, AggregationType } from '../types';
+import { FilterTextEditor } from './FilterTextEditor';
 
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
 
@@ -67,9 +61,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
   const onSelectionTypeChange = (opt: ComboboxOption<Selection['type']>) => {
     const newSel: Selection =
-      opt.value === 'messagePath'
-        ? { type: 'messagePath', messagePath: '' }
-        : { type: 'deviceProperty', key: '' };
+      opt.value === 'messagePath' ? { type: 'messagePath', messagePath: '' } : { type: 'deviceProperty', key: '' };
     const updates: Partial<MyQuery> = { selection: newSel };
     if (opt.value === 'deviceProperty') {
       updates.groupBy = { type: 'deviceId' };
@@ -100,10 +92,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
   // --- GroupBy handlers ---
 
   const onGroupByTypeChange = (opt: ComboboxOption<GroupBy['type']>) => {
-    const newGB: GroupBy =
-      opt.value === 'deviceId'
-        ? { type: 'deviceId' }
-        : { type: 'deviceProperty', key: '' };
+    const newGB: GroupBy = opt.value === 'deviceId' ? { type: 'deviceId' } : { type: 'deviceProperty', key: '' };
     onChange({ ...query, groupBy: newGB });
   };
 
@@ -143,8 +132,11 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
   // --- Filter handler ---
 
-  const onFilterChange = (filter: FilterNode) => {
-    onChange({ ...query, filter });
+  const filterText = query.filterText ?? filterNodeToText(query.filter);
+  const filterError = useMemo(() => filterTextError(filterText), [filterText]);
+
+  const onFilterTextChange = (value: string) => {
+    onChange({ ...query, filterText: value, filter: undefined });
   };
 
   const onGranularityChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -187,37 +179,21 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
         {selection.type === 'deviceProperty' && (
           <InlineField label="Property Key" labelWidth={14} grow>
-            <Input
-              value={selection.key}
-              onChange={onSelectionKeyChange}
-              onBlur={runOnBlur}
-              placeholder="propertyKey"
-            />
+            <Input value={selection.key} onChange={onSelectionKeyChange} onBlur={runOnBlur} placeholder="propertyKey" />
           </InlineField>
         )}
-
       </InlineFieldRow>
 
       {/* Group By — hidden when selecting device properties (always groups by device) */}
       {selection.type === 'messagePath' && (
         <InlineFieldRow>
           <InlineField label="Group By" labelWidth={14} tooltip="How to group the results">
-            <Combobox
-              options={GROUPBY_TYPE_OPTIONS}
-              value={groupBy.type}
-              onChange={onGroupByTypeChange}
-              width={20}
-            />
+            <Combobox options={GROUPBY_TYPE_OPTIONS} value={groupBy.type} onChange={onGroupByTypeChange} width={20} />
           </InlineField>
 
           {groupBy.type === 'deviceProperty' && (
             <InlineField label="Property Key" labelWidth={14} grow>
-              <Input
-                value={groupBy.key}
-                onChange={onGroupByKeyChange}
-                onBlur={runOnBlur}
-                placeholder="propertyKey"
-              />
+              <Input value={groupBy.key} onChange={onGroupByKeyChange} onBlur={runOnBlur} placeholder="propertyKey" />
             </InlineField>
           )}
         </InlineFieldRow>
@@ -225,11 +201,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
       {/* Aggregation */}
       <InlineFieldRow>
-        <InlineField
-          label="Aggregation"
-          labelWidth={14}
-          tooltip="Downsampling method applied to query results"
-        >
+        <InlineField label="Aggregation" labelWidth={14} tooltip="Downsampling method applied to query results">
           <Combobox
             options={AGGREGATION_TYPE_OPTIONS}
             value={currentAggType}
@@ -278,12 +250,15 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
         </InlineField>
       </InlineFieldRow>
 
-      {/* Filter */}
-      <InlineField label="Filter" labelWidth={14} tooltip="Filter conditions applied to the query">
-        <FilterEditor
-          filter={query.filter ?? DEFAULT_QUERY.filter!}
-          onChange={onFilterChange}
-        />
+      <InlineField
+        label="Filter"
+        labelWidth={14}
+        grow
+        tooltip="Filter text, same language as Foxglove Search. Leave empty to apply no filter."
+        invalid={!!filterError}
+        error={filterError?.message}
+      >
+        <FilterTextEditor value={filterText} onChange={onFilterTextChange} onBlur={runOnBlur} error={filterError} />
       </InlineField>
     </Stack>
   );

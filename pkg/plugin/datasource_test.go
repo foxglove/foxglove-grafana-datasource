@@ -14,6 +14,36 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
 
+func TestQueryDataFilterError(t *testing.T) {
+	ds := Datasource{}
+	raw, err := json.Marshal(map[string]any{
+		"selection":   map[string]any{"type": "messagePath", "messagePath": "/imu.x"},
+		"filterError": "Use == to test equality",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := ds.QueryData(
+		context.Background(),
+		&backend.QueryDataRequest{
+			Queries: []backend.DataQuery{
+				{RefID: "A", JSON: raw},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := resp.Responses["A"]
+	if r.Error == nil {
+		t.Fatal("expected error for invalid filter text")
+	}
+	if !strings.Contains(r.Error.Error(), "Use == to test equality") {
+		t.Fatalf("error = %v", r.Error)
+	}
+}
+
 func TestQueryDataMissingSelection(t *testing.T) {
 	ds := Datasource{}
 

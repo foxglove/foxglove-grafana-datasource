@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- The filter editor accepts the same filter text as Foxglove Search (`@device.name == husky`, `/battery.percentage < 20`, `and` / `or`), including `contains`, `exists`, episode, and session filters. `in` remains, written as `@device.name in a,b`. Saved condition trees still run, and the editor shows them as text.
+
 ## v0.0.10
 
 ### Changed

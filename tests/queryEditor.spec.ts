@@ -4,10 +4,7 @@ import { test, expect } from '@grafana/plugin-e2e';
 // pick the provisioned datasource, and assert on rendered controls — but they
 // never run the query (which would invoke the backend).
 
-test('renders the default query editor sections', async ({
-  panelEditPage,
-  readProvisionedDataSource,
-}) => {
+test('renders the default query editor sections', async ({ panelEditPage, readProvisionedDataSource }) => {
   const ds = await readProvisionedDataSource({ fileName: 'datasources.yml' });
   await panelEditPage.datasource.set(ds.name);
 
@@ -22,10 +19,7 @@ test('renders the default query editor sections', async ({
   await expect(row.getByText('Filter', { exact: true })).toBeVisible();
 });
 
-test('FoxQL expression input accepts text', async ({
-  panelEditPage,
-  readProvisionedDataSource,
-}) => {
+test('FoxQL expression input accepts text', async ({ panelEditPage, readProvisionedDataSource }) => {
   const ds = await readProvisionedDataSource({ fileName: 'datasources.yml' });
   await panelEditPage.datasource.set(ds.name);
   const row = panelEditPage.getQueryEditorRow('A');
@@ -35,10 +29,7 @@ test('FoxQL expression input accepts text', async ({
   await expect(expression).toHaveValue('/imu.linear_acceleration.x');
 });
 
-test('granularity input accepts a duration string', async ({
-  panelEditPage,
-  readProvisionedDataSource,
-}) => {
+test('granularity input accepts a duration string', async ({ panelEditPage, readProvisionedDataSource }) => {
   const ds = await readProvisionedDataSource({ fileName: 'datasources.yml' });
   await panelEditPage.datasource.set(ds.name);
   const row = panelEditPage.getQueryEditorRow('A');
@@ -51,7 +42,7 @@ test('granularity input accepts a duration string', async ({
   await expect(granularity).toHaveValue('30s');
 });
 
-test('filter editor renders with a default condition and can add another', async ({
+test('filter editor accepts filter text and opens syntax help', async ({
   panelEditPage,
   readProvisionedDataSource,
 }) => {
@@ -59,13 +50,11 @@ test('filter editor renders with a default condition and can add another', async
   await panelEditPage.datasource.set(ds.name);
   const row = panelEditPage.getQueryEditorRow('A');
 
-  const addCondition = row.getByRole('button', { name: 'Condition', exact: true });
-  await expect(addCondition).toBeVisible();
-  await expect(row.getByRole('button', { name: 'Group' })).toBeVisible();
+  const filter = row.getByRole('textbox', { name: 'Filter' });
+  await filter.fill('@device.name == husky');
+  await expect(filter).toHaveValue('@device.name == husky');
 
-  // Each condition row exposes a "Remove condition" tooltip button.
-  const removeConditionButtons = row.getByRole('button', { name: 'Remove condition' });
-  const initial = await removeConditionButtons.count();
-  await addCondition.click();
-  await expect(removeConditionButtons).toHaveCount(initial + 1);
+  await row.getByRole('button', { name: 'Filter syntax' }).click();
+  await expect(row.getByRole('button', { name: 'Device' })).toBeVisible();
+  await expect(row.getByText('@device.name like husky')).toBeVisible();
 });
