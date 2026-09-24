@@ -42,6 +42,17 @@ const STATIC_FIELDS: readonly StaticField[] = [
   { name: '@episode.metadata.', label: 'Metadata', dataType: 'string' },
 ];
 
+const KNOWN_FIELDS = new Set(STATIC_FIELDS.filter((field) => !field.name.endsWith('.')).map((field) => field.name));
+const KNOWN_PREFIXES = STATIC_FIELDS.filter((field) => field.name.endsWith('.')).map((field) => field.name);
+
+/** True for a built-in field, or for a name under a static prefix such as `@device.properties.`. */
+export function isKnownEntityField(text: string): boolean {
+  if (KNOWN_FIELDS.has(text)) {
+    return true;
+  }
+  return KNOWN_PREFIXES.some((prefix) => text.startsWith(prefix) && text.length > prefix.length);
+}
+
 const STRING_OPERATORS: readonly FilterTextOp[] = [
   'eq',
   'neq',

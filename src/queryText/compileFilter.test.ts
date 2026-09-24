@@ -1,4 +1,4 @@
-import { compileFilterText, filterTextError, isUncommittedFilterError } from './compileFilter';
+import { compileFilterText, displayedFilterError, filterTextError, isUncommittedFilterError } from './compileFilter';
 
 function compiled(source: string) {
   const result = compileFilterText(source);
@@ -150,6 +150,24 @@ describe('compileFilterText', () => {
       ok: false,
       error: { message: 'Write in lists without spaces, for example a,b' },
     });
+  });
+
+  it('shows an unknown field once the caret moves past it', () => {
+    expect(displayedFilterError('@device.nam', '@device.nam'.length, true)).toBeUndefined();
+    expect(displayedFilterError('@device.nam ', '@device.nam '.length, true)).toEqual({
+      message: 'No such field: device.nam',
+      index: 0,
+    });
+    expect(displayedFilterError('@device.nam', '@device.nam'.length, false)?.message).toBe('No such field: device.nam');
+    expect(compileFilterText('@device.nam == x')).toMatchObject({
+      ok: false,
+      error: { message: 'No such field: device.nam' },
+    });
+    expect(compileFilterText('@device.properties.fleet == x')).toMatchObject({
+      ok: true,
+      filter: { type: 'device', field: 'properties.fleet', op: 'eq', value: 'x' },
+    });
+    expect(compileFilterText('@recording.metadata.mission.site == dock')).toMatchObject({ ok: true });
   });
 
   it('hides an error on the token still being typed', () => {

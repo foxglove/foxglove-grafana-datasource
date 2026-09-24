@@ -4,7 +4,7 @@ import { QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
 import { intervalStringToNanoseconds } from '../intervalNanos';
 import { parseAndConvertFoxql } from '../foxqlSelection';
-import { filterTextError, isUncommittedFilterError } from '../queryText/compileFilter';
+import type { FilterTextError } from '../queryText/compileFilter';
 import { filterNodeToText } from '../queryText/migrateFilter';
 import { MyDataSourceOptions, MyQuery, Selection, GroupBy, AggregationType } from '../types';
 import { FilterTextEditor } from './FilterTextEditor';
@@ -133,12 +133,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
   // --- Filter handler ---
 
   const filterText = query.filterText ?? filterNodeToText(query.filter);
-  const filterError = useMemo(() => filterTextError(filterText), [filterText]);
-  const [filterFocused, setFilterFocused] = useState(false);
-  const visibleFilterError =
-    filterError === undefined || (filterFocused && isUncommittedFilterError(filterText, filterError))
-      ? undefined
-      : filterError;
+  const [visibleFilterError, setVisibleFilterError] = useState<FilterTextError | undefined>(undefined);
 
   const onFilterTextChange = (value: string) => {
     onChange({ ...query, filterText: value, filter: undefined });
@@ -266,12 +261,8 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
         <FilterTextEditor
           value={filterText}
           onChange={onFilterTextChange}
-          onFocus={() => setFilterFocused(true)}
-          onBlur={() => {
-            setFilterFocused(false);
-            runOnBlur();
-          }}
-          error={visibleFilterError}
+          onBlur={runOnBlur}
+          onErrorChange={setVisibleFilterError}
         />
       </InlineField>
     </Stack>

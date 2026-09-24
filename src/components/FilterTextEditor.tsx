@@ -1,11 +1,12 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css, cx } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { IconButton, useStyles2 } from '@grafana/ui';
 
+import { displayedFilterError, type FilterTextError } from '../queryText/compileFilter';
 import { filterCompletions, type CompletionItem } from '../queryText/completions';
 import { highlightQuery } from '../queryText/highlight';
-import { errorTokenRange, type ParseError } from '../queryText/parser';
+import { errorTokenRange } from '../queryText/parser';
 import { analyzeParens, groupBandParts, matchParenAt } from '../queryText/structure';
 
 const PLACEHOLDER = '@device.name == husky and /imu.x > 1';
@@ -66,12 +67,11 @@ const MODE_ROWS: Array<Omit<Insert, 'insertText'>> = [
 interface FilterTextEditorProps {
   value: string;
   onChange: (value: string) => void;
-  onFocus: () => void;
   onBlur: () => void;
-  error?: ParseError;
+  onErrorChange: (error: FilterTextError | undefined) => void;
 }
 
-export function FilterTextEditor({ value, onChange, onFocus, onBlur, error }: FilterTextEditorProps) {
+export function FilterTextEditor({ value, onChange, onBlur, onErrorChange }: FilterTextEditorProps) {
   const styles = useStyles2(getStyles);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bandRef = useRef<HTMLDivElement>(null);
@@ -108,7 +108,11 @@ export function FilterTextEditor({ value, onChange, onFocus, onBlur, error }: Fi
     }
     return offsets;
   }, [segments]);
+  const error = useMemo(() => displayedFilterError(value, caret, focused), [value, caret, focused]);
   const errorRange = error === undefined ? undefined : errorTokenRange(value, error.index);
+  useEffect(() => {
+    onErrorChange(error);
+  }, [error, onErrorChange]);
 
   const syncScroll = (event: React.UIEvent<HTMLTextAreaElement>) => {
     const { scrollLeft, scrollTop } = event.currentTarget;
@@ -228,7 +232,6 @@ export function FilterTextEditor({ value, onChange, onFocus, onBlur, error }: Fi
             }}
             onFocus={() => {
               setFocused(true);
-              onFocus();
             }}
             onScroll={syncScroll}
             onSelect={syncCaret}

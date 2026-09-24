@@ -2,6 +2,7 @@ import { parseAndConvertFoxql } from '../foxqlSelection';
 import type { FilterWire } from '../types';
 
 import { isLogicNode, type QueryNode } from './ast';
+import { isKnownEntityField } from './completions';
 import { entityFieldToWire, isEntityFieldText, parseFieldKey } from './entityFields';
 import { lex } from './lexer';
 import { VALUELESS_OPERATORS, type FilterTextOp } from './operators';
@@ -25,6 +26,10 @@ const TOPIC_VALUE_MESSAGE = 'Topic comparisons only support exists. Compare a fi
 export function compileFilterText(source: string): CompileFilterResult {
   if (source.trim() === '') {
     return { ok: true };
+  }
+  const unknown = unknownEntityField(source);
+  if (unknown !== undefined) {
+    return { ok: false, error: { message: `No such field: ${unknown.wire}`, index: unknown.start } };
   }
   const parsed = parseQuery(source);
   if (!parsed.ok) {
@@ -56,6 +61,62 @@ export function filterTextError(source: string): FilterTextError | undefined {
 export function isUncommittedFilterError(source: string, error: FilterTextError): boolean {
   const range = errorTokenRange(source, error.index);
   return range.end >= source.trimEnd().length;
+}
+
+/**
+ * The error to show in the editor. An unknown field appears once the caret moves past
+ * it, which a trailing space does. Other errors on the final token wait until more
+ * text follows, or until the field blurs.
+ */
+export function displayedFilterError(source: string, caret: number, focused: boolean): FilterTextError | undefined {
+  if (source.includes('$')) {
+    return undefined;
+  }
+  const unknown = unknownEntityField(source);
+  if (unknown !== undefined) {
+    const committed = !focused || caret > unknown.end || unknown.end < source.trimEnd().length;
+    if (committed) {
+      return { message: `No such field: ${unknown.wire}`, index: unknown.start };
+    }
+  }
+  const parsed = filterTextError(source);
+  if (parsed === undefined) {
+    return undefined;
+  }
+  if (focused && isUncommittedFilterError(source, parsed)) {
+    return undefined;
+  }
+  return parsed;
+}
+
+const LOGIC_WORDS = new Set(['and', 'or']);
+
+function unknownEntityField(source: string): { wire: string; start: number; end: number } | undefined {
+  let tokens;
+  try {
+    tokens = lex(source);
+  } catch {
+    return undefined;
+  }
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    const previous = tokens[index - 1];
+    const atClauseStart =
+      previous === undefined ||
+      previous.type === 'lparen' ||
+      (previous.type === 'word' && LOGIC_WORDS.has(previous.value.toLowerCase()));
+    if (!atClauseStart || token.type !== 'word' || !token.text.startsWith('@') || token.text.endsWith('.')) {
+      continue;
+    }
+    if (!isKnownEntityField(token.text)) {
+      return {
+        wire: entityFieldToWire(token.text),
+        start: token.offset,
+        end: token.offset + token.text.length,
+      };
+    }
+  }
+  return undefined;
 }
 
 function compileNode(node: QueryNode, source: string): CompileFilterResult {
