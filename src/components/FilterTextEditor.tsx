@@ -82,9 +82,10 @@ export function FilterTextEditor({ value, onChange, onBlur, onErrorChange }: Fil
   const [caret, setCaret] = useState(0);
   const [completionIndex, setCompletionIndex] = useState(0);
   const [dismissedCaret, setDismissedCaret] = useState<number | undefined>(undefined);
+  const error = useMemo(() => displayedFilterError(value, caret, focused), [value, caret, focused]);
   const completions = useMemo(
-    () => (focused && dismissedCaret !== caret ? filterCompletions(value, caret) : undefined),
-    [focused, dismissedCaret, value, caret]
+    () => (focused && error === undefined && dismissedCaret !== caret ? filterCompletions(value, caret) : undefined),
+    [focused, error, dismissedCaret, value, caret]
   );
   const completionItems = completions?.items ?? [];
 
@@ -108,7 +109,6 @@ export function FilterTextEditor({ value, onChange, onBlur, onErrorChange }: Fil
     }
     return offsets;
   }, [segments]);
-  const error = useMemo(() => displayedFilterError(value, caret, focused), [value, caret, focused]);
   const errorRange = error === undefined ? undefined : errorTokenRange(value, error.index);
   useEffect(() => {
     onErrorChange(error);
