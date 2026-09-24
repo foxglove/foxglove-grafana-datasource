@@ -2,7 +2,7 @@ import { Grammar, Parser } from 'nearley';
 
 import type { ComparisonNode, QueryNode } from './ast';
 import grammar from './grammar';
-import { decodeQuoted, lex, type LexToken } from './lexer';
+import { lex, type LexToken } from './lexer';
 import {
   RESERVED_WORD_SET,
   TEXT_TO_OPERATOR,
@@ -68,19 +68,10 @@ function finalizeComparison(node: RawComparison): ComparisonNode {
   if (operator === undefined) {
     throw new Error(`Unknown operator "${node.opText}"`);
   }
-  const field = unwrapFilterQuotes(node.field);
   if (VALUELESS_OPERATORS.has(operator)) {
-    return { type: 'comparison', field, operator };
+    return { type: 'comparison', field: node.field, operator };
   }
-  return { type: 'comparison', field, operator, value: node.value ?? '' };
-}
-
-/** A field that is one quoted token uses those quotes to escape the filter lexer, not as part of the path. */
-function unwrapFilterQuotes(field: string): string {
-  if (field.length >= 2 && field.startsWith('"') && field.endsWith('"')) {
-    return decodeQuoted(field);
-  }
-  return field;
+  return { type: 'comparison', field: node.field, operator, value: node.value ?? '' };
 }
 
 function isTermToken(token: LexToken): boolean {

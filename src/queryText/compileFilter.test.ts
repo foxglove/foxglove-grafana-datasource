@@ -150,6 +150,18 @@ describe('compileFilterText', () => {
       ok: false,
       error: { message: 'Visual search is not supported in Grafana filters.', index: 30 },
     });
+    expect(compileFilterText('"cam==era" exists')).toMatchObject({
+      ok: true,
+      filter: { type: 'topic-exists', topic: 'cam==era' },
+    });
+    expect(compileFilterText('"a"."b" exists')).toMatchObject({
+      ok: true,
+      filter: { type: 'message', topic: 'a', selectorPath: [{ kind: 'field', field: 'b' }] },
+    });
+    expect(compileFilterText('"@device.nam" == x')).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining('exists') },
+    });
     expect(compileFilterText('@device.name in a, b')).toMatchObject({
       ok: false,
       error: { message: 'Write in lists without spaces, for example a,b' },

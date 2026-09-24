@@ -4,7 +4,7 @@ import type { FilterWire } from '../types';
 import { isLogicNode, type QueryNode } from './ast';
 import { isKnownEntityField } from './completions';
 import { entityFieldToWire, isEntityFieldText, parseFieldKey } from './entityFields';
-import { lex } from './lexer';
+import { decodeQuoted, lex } from './lexer';
 import { VALUELESS_OPERATORS, type FilterTextOp } from './operators';
 import { errorTokenRange, parseQuery } from './parser';
 
@@ -180,7 +180,7 @@ function compileEntity(field: string, operator: FilterTextOp, value: string | un
 }
 
 function compileMessage(field: string, operator: FilterTextOp, value: string | undefined): CompileFilterResult {
-  const parsed = parseAndConvertFoxql(field);
+  const parsed = parseAndConvertFoxql(foxqlField(field));
   if (!parsed.ok) {
     return { ok: false, error: { message: parsed.error, index: 0 } };
   }
@@ -233,6 +233,29 @@ function indexOfVisual(source: string): number {
     }
   }
   return 0;
+}
+
+const SINGLE_QUOTED = /^"(?:\\.|[^"\\])*"$/;
+
+/**
+ * A saved message path is wrapped in quotes when it contains `=` or other filter-lexer
+ * characters. Those quotes are not part of the path. A FoxQL path whose own quotes are
+ * the whole field, such as `"cam==era"`, is left quoted.
+ */
+function foxqlField(field: string): string {
+  if (!SINGLE_QUOTED.test(field)) {
+    return field;
+  }
+  const decoded = decodeQuoted(field);
+  const quoted = parseAndConvertFoxql(field);
+  const plain = parseAndConvertFoxql(decoded);
+  if (!plain.ok) {
+    return field;
+  }
+  if (!quoted.ok || (quoted.parsed.selectorPath.length === 0 && plain.parsed.selectorPath.length > 0)) {
+    return decoded;
+  }
+  return field;
 }
 
 function inListOrEmpty(raw: string): string[] {
