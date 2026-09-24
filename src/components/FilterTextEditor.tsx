@@ -3,8 +3,9 @@ import { css, cx } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { IconButton, useStyles2 } from '@grafana/ui';
 
-import { errorTokenRange, type ParseError } from '../queryText/parser';
+import { filterCompletions, type CompletionItem } from '../queryText/completions';
 import { highlightQuery } from '../queryText/highlight';
+import { errorTokenRange, type ParseError } from '../queryText/parser';
 import { analyzeParens, groupBandParts, matchParenAt } from '../queryText/structure';
 
 const PLACEHOLDER = '@device.name == husky and /imu.x > 1';
@@ -78,6 +79,13 @@ export function FilterTextEditor({ value, onChange, onBlur, error }: FilterTextE
   const [helpOpen, setHelpOpen] = useState(false);
   const [focused, setFocused] = useState(false);
   const [caret, setCaret] = useState(0);
+  const [completionIndex, setCompletionIndex] = useState(0);
+  const [dismissedCaret, setDismissedCaret] = useState<number | undefined>(undefined);
+  const completions = useMemo(
+    () => (focused && dismissedCaret !== caret ? filterCompletions(value, caret) : undefined),
+    [focused, dismissedCaret, value, caret]
+  );
+  const completionItems = completions?.items ?? [];
 
   const segments = useMemo(() => highlightQuery(value), [value]);
   const parens = useMemo(() => analyzeParens(value), [value]);
@@ -113,6 +121,22 @@ export function FilterTextEditor({ value, onChange, onBlur, error }: FilterTextE
 
   const syncCaret = (event: React.SyntheticEvent<HTMLTextAreaElement>) => {
     setCaret(event.currentTarget.selectionStart ?? 0);
+  };
+
+  const acceptCompletion = (item: CompletionItem) => {
+    if (completions === undefined) {
+      return;
+    }
+    const text = item.appendSpace === true ? `${item.insertText} ` : item.insertText;
+    const next = `${value.slice(0, completions.range.start)}${text}${value.slice(completions.range.end)}`;
+    const nextCaret = completions.range.start + text.length;
+    onChange(next);
+    setCompletionIndex(0);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(nextCaret, nextCaret);
+      setCaret(nextCaret);
+    });
   };
 
   const insert = (insertText: string) => {
@@ -210,9 +234,50 @@ export function FilterTextEditor({ value, onChange, onBlur, error }: FilterTextE
               if ((event.metaKey || event.ctrlKey) && event.key === '/') {
                 event.preventDefault();
                 setHelpOpen((open) => !open);
+                return;
+              }
+              if (completionItems.length === 0) {
+                return;
+              }
+              if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                setCompletionIndex((index) => (index + 1) % completionItems.length);
+              } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                setCompletionIndex((index) => (index - 1 + completionItems.length) % completionItems.length);
+              } else if (event.key === 'Escape') {
+                event.preventDefault();
+                setDismissedCaret(caret);
+              } else if (event.key === 'Enter' || event.key === 'Tab') {
+                event.preventDefault();
+                const item = completionItems[completionIndex] ?? completionItems[0];
+                if (item) {
+                  acceptCompletion(item);
+                }
               }
             }}
           />
+          {completionItems.length > 0 && (
+            <ul className={styles.completions} role="listbox" aria-label="Filter suggestions">
+              {completionItems.map((item, index) => (
+                <li key={item.insertText} role="presentation">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={index === completionIndex}
+                    className={cx(styles.completion, index === completionIndex && styles.completionActive)}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      acceptCompletion(item);
+                    }}
+                  >
+                    <span>{item.primary}</span>
+                    {item.secondary && <span className={styles.completionSecondary}>{item.secondary}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <IconButton
           name="question-circle"
@@ -313,6 +378,42 @@ const getStyles = (theme: GrafanaTheme2) => ({
     position: 'relative',
     flex: 1,
     minWidth: 0,
+  }),
+  completions: css({
+    position: 'absolute',
+    zIndex: 2,
+    top: '100%',
+    left: 0,
+    right: 0,
+    maxHeight: 240,
+    margin: 0,
+    padding: theme.spacing(0.5),
+    listStyle: 'none',
+    overflow: 'auto',
+    background: theme.colors.background.primary,
+    border: `1px solid ${theme.colors.border.medium}`,
+    borderRadius: theme.shape.radius.default,
+    boxShadow: theme.shadows.z2,
+  }),
+  completion: css({
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: theme.spacing(2),
+    width: '100%',
+    border: 0,
+    borderRadius: theme.shape.radius.default,
+    padding: theme.spacing(0.5, 1),
+    background: 'transparent',
+    color: theme.colors.text.primary,
+    font: 'inherit',
+    textAlign: 'left',
+    cursor: 'pointer',
+  }),
+  completionActive: css({
+    background: theme.colors.action.hover,
+  }),
+  completionSecondary: css({
+    color: theme.colors.text.secondary,
   }),
   overlay: css({
     ...overlayFont(theme),
