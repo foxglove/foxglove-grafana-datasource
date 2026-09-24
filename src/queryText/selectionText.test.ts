@@ -1,7 +1,7 @@
 import {
   compileSelectionText,
+  displayedSelectionError,
   isDevicePropertySelectionText,
-  selectionTextError,
   selectionToText,
 } from './selectionText';
 
@@ -31,22 +31,35 @@ describe('selection text', () => {
     expect(isDevicePropertySelectionText('/imu.x')).toBe(false);
   });
 
-  it('rejects a field that is neither a FoxQL expression nor a device property', () => {
+  it('compiles a topic that does not start with a slash', () => {
+    expect(compileSelectionText('imu.x')).toMatchObject({
+      ok: true,
+      selection: { type: 'messagePath', topic: 'imu', selectorPath: [{ kind: 'field', field: 'x' }] },
+    });
+    expect(compileSelectionText('some0/nice_topic.with')).toMatchObject({
+      ok: true,
+      selection: { type: 'messagePath', topic: 'some0/nice_topic' },
+    });
+  });
+
+  it('rejects a device field that is not a property', () => {
     expect(compileSelectionText('@device.name')).toMatchObject({
       ok: false,
       error: 'Enter a device property as @device.properties.key',
     });
     expect(compileSelectionText('@device.properties.')).toMatchObject({ ok: false });
-    expect(compileSelectionText('version')).toMatchObject({
-      ok: false,
-      error: 'Enter a FoxQL expression (/topic.x.y) or a device property (@device.properties.key)',
-    });
   });
 
-  it('renders a saved selection as text and skips template variables', () => {
+  it('hides a selection error while the field is focused', () => {
+    expect(displayedSelectionError('@device.', true)).toBeUndefined();
+    expect(displayedSelectionError('@device. ', true)).toBeUndefined();
+    expect(displayedSelectionError('@device.name', false)).toBe('Enter a device property as @device.properties.key');
+    expect(displayedSelectionError('@device.properties.$key', false)).toBeUndefined();
+  });
+
+  it('renders a saved selection as text', () => {
     expect(selectionToText({ type: 'messagePath', messagePath: '/imu.x' })).toBe('/imu.x');
     expect(selectionToText({ type: 'deviceProperty', key: 'version' })).toBe('@device.properties.version');
-    expect(selectionTextError('@device.properties.$key')).toBeUndefined();
     expect(compileSelectionText('')).toEqual({ ok: true });
   });
 });

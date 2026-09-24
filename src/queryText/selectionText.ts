@@ -3,7 +3,6 @@ import type { Selection } from '../types';
 
 const DEVICE_PROPERTY_PREFIX = '@device.properties.';
 
-const SELECTION_HINT = 'Enter a FoxQL expression (/topic.x.y) or a device property (@device.properties.key)';
 const PROPERTY_HINT = 'Enter a device property as @device.properties.key';
 
 export type CompiledSelection = { ok: true; selection?: Selection } | { ok: false; error: string };
@@ -27,7 +26,8 @@ export function isDevicePropertySelectionText(source: string): boolean {
 
 /**
  * Compile selection text into the wire selection. Empty text compiles to no selection.
- * `/topic.x.y` is a FoxQL expression. `@device.properties.key` is a device property.
+ * A FoxQL expression names a topic with or without a leading `/`. `@device.properties.key`
+ * is a device property.
  */
 export function compileSelectionText(source: string): CompiledSelection {
   const text = source.trim();
@@ -37,15 +37,20 @@ export function compileSelectionText(source: string): CompiledSelection {
   if (text.startsWith('@')) {
     return compileDeviceProperty(text);
   }
-  if (text.startsWith('/')) {
-    return compileFoxql(text);
-  }
-  return { ok: false, error: SELECTION_HINT };
+  return compileFoxql(text);
 }
 
-/** Editor validation. Text that still contains a Grafana template variable is skipped. */
-export function selectionTextError(source: string): string | undefined {
+/**
+ * The error to show in the selection field. While it is focused, an error on the
+ * expression still being typed stays hidden, including after a trailing space.
+ * It appears when the field blurs. Text that contains a Grafana template variable
+ * is skipped.
+ */
+export function displayedSelectionError(source: string, focused: boolean): string | undefined {
   if (source.trim() === '' || source.includes('$')) {
+    return undefined;
+  }
+  if (focused) {
     return undefined;
   }
   const compiled = compileSelectionText(source);

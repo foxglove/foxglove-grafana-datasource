@@ -5,7 +5,7 @@ import { DataSource } from '../datasource';
 import { intervalStringToNanoseconds } from '../intervalNanos';
 import type { FilterTextError } from '../queryText/compileFilter';
 import { filterNodeToText } from '../queryText/migrateFilter';
-import { isDevicePropertySelectionText, selectionTextError, selectionToText } from '../queryText/selectionText';
+import { displayedSelectionError, isDevicePropertySelectionText, selectionToText } from '../queryText/selectionText';
 import { MyDataSourceOptions, MyQuery, GroupBy, AggregationType } from '../types';
 import { FilterTextEditor } from './FilterTextEditor';
 
@@ -33,7 +33,11 @@ const AGGREGATION_TYPE_OPTIONS: Array<ComboboxOption<AggregationType | '__none__
 export function QueryEditor({ query, onChange, onRunQuery }: Props) {
   const groupBy = query.groupBy ?? { type: 'deviceId' };
   const selectionText = query.selectionText ?? selectionToText(query.selection);
-  const selectionError = useMemo(() => selectionTextError(selectionText), [selectionText]);
+  const [selectionFocused, setSelectionFocused] = useState(false);
+  const selectionError = useMemo(
+    () => displayedSelectionError(selectionText, selectionFocused),
+    [selectionText, selectionFocused]
+  );
   const selectingDeviceProperty = isDevicePropertySelectionText(selectionText);
 
   const rawInterval = query.aggregation?.interval ?? '';
@@ -121,7 +125,11 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
           <Input
             value={selectionText}
             onChange={onSelectionTextChange}
-            onBlur={runOnBlur}
+            onFocus={() => setSelectionFocused(true)}
+            onBlur={() => {
+              setSelectionFocused(false);
+              runOnBlur();
+            }}
             placeholder="/topic.x.y or @device.properties.key"
             invalid={!!selectionError}
           />
