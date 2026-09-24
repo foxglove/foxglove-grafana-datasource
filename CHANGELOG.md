@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Changed
+
+- A brace-wrapped `in` list, including Grafana's default multi-value format `{a,b}`, fails the query. Use `${name:csv}`. A saved message path that contains `=` or quotes is compiled as that path.
+- Selection is one text field. A FoxQL expression reads a topic with or without a leading `/`. `@device.properties.key` reads a numeric device property. An invalid selection stays unmarked until you leave the field. Saved dropdown selections are shown in that text.
+- The filter editor accepts the same filter text as Foxglove Search (`@device.name == husky`, `/battery.percentage < 20`, `and` / `or`), including `contains`, `exists`, episode, and session filters. Typing suggests the static field names and their operators. A syntax error on the token you are still writing stays hidden until you continue past it or leave the field. An unknown field, such as `@device.nam`, is highlighted as soon as you move past it. `in` remains, written as `@device.name in a,b`. Saved condition trees are shown as text and run through that text. Rows with an empty value are omitted, so they no longer empty an AND group. A row with a value but an empty message path fails the query.
+
 ## v0.0.10
 
 ### Changed

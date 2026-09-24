@@ -1,26 +1,15 @@
-import React, { ChangeEvent, useMemo } from 'react';
+import React, { ChangeEvent, useMemo, useState } from 'react';
 import { Combobox, type ComboboxOption, InlineField, InlineFieldRow, Input, Stack } from '@grafana/ui';
 import { QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
 import { intervalStringToNanoseconds } from '../intervalNanos';
-import { parseAndConvertFoxql } from '../foxqlSelection';
-import {
-  MyDataSourceOptions,
-  MyQuery,
-  Selection,
-  GroupBy,
-  AggregationType,
-  FilterNode,
-  DEFAULT_QUERY,
-} from '../types';
-import { FilterEditor } from './FilterEditor';
+import type { FilterTextError } from '../queryText/compileFilter';
+import { filterNodeToText } from '../queryText/migrateFilter';
+import { displayedSelectionError, isDevicePropertySelectionText, selectionToText } from '../queryText/selectionText';
+import { MyDataSourceOptions, MyQuery, GroupBy, AggregationType } from '../types';
+import { FilterTextEditor } from './FilterTextEditor';
 
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
-
-const SELECTION_TYPE_OPTIONS: Array<ComboboxOption<Selection['type']>> = [
-  { label: 'FoxQL Expression', value: 'messagePath' },
-  { label: 'Device Property', value: 'deviceProperty' },
-];
 
 const GROUPBY_TYPE_OPTIONS: Array<ComboboxOption<GroupBy['type']>> = [
   { label: 'Device', value: 'deviceId' },
@@ -42,20 +31,14 @@ const AGGREGATION_TYPE_OPTIONS: Array<ComboboxOption<AggregationType | '__none__
 ];
 
 export function QueryEditor({ query, onChange, onRunQuery }: Props) {
-  const selection = query.selection ?? { type: 'messagePath', messagePath: '' };
   const groupBy = query.groupBy ?? { type: 'deviceId' };
-
-  const rawExpression = selection.type === 'messagePath' ? selection.messagePath : '';
-  const expressionError = useMemo(() => {
-    if (!rawExpression) {
-      return undefined;
-    }
-    if (rawExpression.includes('$')) {
-      return undefined;
-    }
-    const result = parseAndConvertFoxql(rawExpression);
-    return result.ok ? undefined : result.error;
-  }, [rawExpression]);
+  const selectionText = query.selectionText ?? selectionToText(query.selection);
+  const [selectionFocused, setSelectionFocused] = useState(false);
+  const selectionError = useMemo(
+    () => displayedSelectionError(selectionText, selectionFocused),
+    [selectionText, selectionFocused]
+  );
+  const selectingDeviceProperty = isDevicePropertySelectionText(selectionText);
 
   const rawInterval = query.aggregation?.interval ?? '';
   const intervalError = useMemo(() => validateIntervalString(rawInterval), [rawInterval]);
@@ -63,47 +46,19 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
   const rawGranularity = query.granularity ?? '';
   const granularityError = useMemo(() => validateIntervalString(rawGranularity), [rawGranularity]);
 
-  // --- Selection handlers ---
-
-  const onSelectionTypeChange = (opt: ComboboxOption<Selection['type']>) => {
-    const newSel: Selection =
-      opt.value === 'messagePath'
-        ? { type: 'messagePath', messagePath: '' }
-        : { type: 'deviceProperty', key: '' };
-    const updates: Partial<MyQuery> = { selection: newSel };
-    if (opt.value === 'deviceProperty') {
+  const onSelectionTextChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    const updates: Partial<MyQuery> = { selectionText: value };
+    if (isDevicePropertySelectionText(value)) {
       updates.groupBy = { type: 'deviceId' };
     }
     onChange({ ...query, ...updates });
   };
 
-  const onExpressionChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (selection.type !== 'messagePath') {
-      return;
-    }
-    onChange({
-      ...query,
-      selection: { ...selection, messagePath: e.target.value },
-    });
-  };
-
-  const onSelectionKeyChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (selection.type !== 'deviceProperty') {
-      return;
-    }
-    onChange({
-      ...query,
-      selection: { ...selection, key: e.target.value },
-    });
-  };
-
   // --- GroupBy handlers ---
 
   const onGroupByTypeChange = (opt: ComboboxOption<GroupBy['type']>) => {
-    const newGB: GroupBy =
-      opt.value === 'deviceId'
-        ? { type: 'deviceId' }
-        : { type: 'deviceProperty', key: '' };
+    const newGB: GroupBy = opt.value === 'deviceId' ? { type: 'deviceId' } : { type: 'deviceProperty', key: '' };
     onChange({ ...query, groupBy: newGB });
   };
 
@@ -143,8 +98,11 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
   // --- Filter handler ---
 
-  const onFilterChange = (filter: FilterNode) => {
-    onChange({ ...query, filter });
+  const filterText = query.filterText ?? filterNodeToText(query.filter);
+  const [visibleFilterError, setVisibleFilterError] = useState<FilterTextError | undefined>(undefined);
+
+  const onFilterTextChange = (value: string) => {
+    onChange({ ...query, filterText: value, filter: undefined });
   };
 
   const onGranularityChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -155,69 +113,39 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
   return (
     <Stack gap={1} direction="column">
-      {/* Selection */}
       <InlineFieldRow>
-        <InlineField label="Selection" labelWidth={14} tooltip="What data to select">
-          <Combobox
-            options={SELECTION_TYPE_OPTIONS}
-            value={selection.type}
-            onChange={onSelectionTypeChange}
-            width={20}
+        <InlineField
+          label="Selection"
+          labelWidth={14}
+          tooltip="A FoxQL expression (/topic.x.y) or a device property (@device.properties.key)"
+          grow
+          invalid={!!selectionError}
+          error={selectionError}
+        >
+          <Input
+            value={selectionText}
+            onChange={onSelectionTextChange}
+            onFocus={() => setSelectionFocused(true)}
+            onBlur={() => {
+              setSelectionFocused(false);
+              runOnBlur();
+            }}
+            placeholder="/topic.x.y or @device.properties.key"
+            invalid={!!selectionError}
           />
         </InlineField>
-
-        {selection.type === 'messagePath' && (
-          <InlineField
-            label="Expression"
-            labelWidth={14}
-            tooltip="FoxQL expression, e.g. /imu.linear_acceleration.x"
-            grow
-            invalid={!!expressionError}
-            error={expressionError}
-          >
-            <Input
-              value={selection.messagePath}
-              onChange={onExpressionChange}
-              onBlur={runOnBlur}
-              placeholder="/topic.field.subfield"
-              invalid={!!expressionError}
-            />
-          </InlineField>
-        )}
-
-        {selection.type === 'deviceProperty' && (
-          <InlineField label="Property Key" labelWidth={14} grow>
-            <Input
-              value={selection.key}
-              onChange={onSelectionKeyChange}
-              onBlur={runOnBlur}
-              placeholder="propertyKey"
-            />
-          </InlineField>
-        )}
-
       </InlineFieldRow>
 
-      {/* Group By — hidden when selecting device properties (always groups by device) */}
-      {selection.type === 'messagePath' && (
+      {/* Group By — hidden for a device property, which always groups by device */}
+      {!selectingDeviceProperty && (
         <InlineFieldRow>
           <InlineField label="Group By" labelWidth={14} tooltip="How to group the results">
-            <Combobox
-              options={GROUPBY_TYPE_OPTIONS}
-              value={groupBy.type}
-              onChange={onGroupByTypeChange}
-              width={20}
-            />
+            <Combobox options={GROUPBY_TYPE_OPTIONS} value={groupBy.type} onChange={onGroupByTypeChange} width={20} />
           </InlineField>
 
           {groupBy.type === 'deviceProperty' && (
             <InlineField label="Property Key" labelWidth={14} grow>
-              <Input
-                value={groupBy.key}
-                onChange={onGroupByKeyChange}
-                onBlur={runOnBlur}
-                placeholder="propertyKey"
-              />
+              <Input value={groupBy.key} onChange={onGroupByKeyChange} onBlur={runOnBlur} placeholder="propertyKey" />
             </InlineField>
           )}
         </InlineFieldRow>
@@ -225,11 +153,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
       {/* Aggregation */}
       <InlineFieldRow>
-        <InlineField
-          label="Aggregation"
-          labelWidth={14}
-          tooltip="Downsampling method applied to query results"
-        >
+        <InlineField label="Aggregation" labelWidth={14} tooltip="Downsampling method applied to query results">
           <Combobox
             options={AGGREGATION_TYPE_OPTIONS}
             value={currentAggType}
@@ -278,11 +202,19 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
         </InlineField>
       </InlineFieldRow>
 
-      {/* Filter */}
-      <InlineField label="Filter" labelWidth={14} tooltip="Filter conditions applied to the query">
-        <FilterEditor
-          filter={query.filter ?? DEFAULT_QUERY.filter!}
-          onChange={onFilterChange}
+      <InlineField
+        label="Filter"
+        labelWidth={14}
+        grow
+        tooltip="Filter text, same language as Foxglove Search. Leave empty to apply no filter."
+        invalid={!!visibleFilterError}
+        error={visibleFilterError?.message}
+      >
+        <FilterTextEditor
+          value={filterText}
+          onChange={onFilterTextChange}
+          onBlur={runOnBlur}
+          onErrorChange={setVisibleFilterError}
         />
       </InlineField>
     </Stack>

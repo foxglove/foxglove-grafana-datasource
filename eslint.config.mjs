@@ -34,6 +34,7 @@ export default defineConfig([
       '**/.idea',
       '**/.eslintcache',
       'src/foxql/grammar.js',
+      'src/queryText/grammar.js',
     ],
   },
   ...baseConfig,

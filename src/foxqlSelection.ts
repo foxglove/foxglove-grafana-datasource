@@ -98,9 +98,7 @@ function convertFoxql(parsed: FoxqlExpression): ParsedFoxqlSelection {
 
 // --- Public API ---
 
-type ConvertResult =
-  | { ok: true; parsed: ParsedFoxqlSelection }
-  | { ok: false; error: string };
+type ConvertResult = { ok: true; parsed: ParsedFoxqlSelection } | { ok: false; error: string };
 
 /**
  * Parse a raw FoxQL expression and convert it to the API wire format
@@ -121,5 +119,31 @@ export function parseAndConvertFoxql(raw: string): ConvertResult {
     return { ok: false, error: 'Function chains (e.g. .@rpy, .@degrees) are not supported' };
   }
 
+  // The grammar accepts a trailing dot and a filter with no operator so editors can
+  // offer completions. Sending that parse drops the unfinished part.
+  if (!parsed.isFullySpecified) {
+    return { ok: false, error: 'FoxQL expression is incomplete' };
+  }
+
+  if (containsVariableReference(parsed)) {
+    return { ok: false, error: 'FoxQL variable references are not supported' };
+  }
+
   return { ok: true, parsed: convertFoxql(parsed) };
+}
+
+function containsVariableReference(parsed: FoxqlExpression): boolean {
+  for (const part of parsed.parts) {
+    if (part.type === 'slice' && (isVariable(part.start) || isVariable(part.end))) {
+      return true;
+    }
+    if (part.type === 'filter' && isVariable(part.value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isVariable(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && 'variableName' in value;
 }
