@@ -17,6 +17,7 @@ export type CompileFilterResult = { ok: true; filter?: FilterWire } | { ok: fals
 
 const VISUAL_MESSAGE = 'Visual search is not supported in Grafana filters.';
 const TOPIC_VALUE_MESSAGE = 'Topic comparisons only support exists. Compare a field to filter on a value.';
+const BRACE_LIST_MESSAGE = 'A brace-wrapped list is not an in list. Use ${name:csv} for a multi-value variable.';
 
 /**
  * Compile filter text into the wire predicate sent to the Foxglove API.
@@ -144,8 +145,14 @@ function compileComparison(field: string, operator: FilterTextOp, value: string 
   if (!VALUELESS_OPERATORS.has(operator) && (value === undefined || value === '')) {
     return { ok: false, error: { message: 'Enter a value', index: 0 } };
   }
-  if (operator === 'in' && splitInValues(value ?? '').length === 0) {
-    return { ok: false, error: { message: 'Enter a value', index: 0 } };
+  if (operator === 'in') {
+    const listed = inListValues(value ?? '');
+    if (!listed.ok) {
+      return { ok: false, error: { message: listed.error, index: 0 } };
+    }
+    if (listed.values.length === 0) {
+      return { ok: false, error: { message: 'Enter a value', index: 0 } };
+    }
   }
   if (isEntityFieldText(field)) {
     return compileEntity(field, operator, value);
@@ -167,7 +174,7 @@ function compileEntity(field: string, operator: FilterTextOp, value: string | un
       type: key.predicateType,
       op: operator,
       field: key.field,
-      value: operator === 'in' ? splitInValues(value ?? '') : value,
+      value: operator === 'in' ? inListOrEmpty(value ?? '') : value,
     },
   };
 }
@@ -201,7 +208,7 @@ function compileMessage(field: string, operator: FilterTextOp, value: string | u
       op: operator,
       topic: parsed.parsed.topic,
       selectorPath: parsed.parsed.selectorPath,
-      value: operator === 'in' ? splitInValues(value ?? '') : value,
+      value: operator === 'in' ? inListOrEmpty(value ?? '') : value,
     },
   };
 }
@@ -228,9 +235,21 @@ function indexOfVisual(source: string): number {
   return 0;
 }
 
-function splitInValues(raw: string): string[] {
-  return raw
-    .split(',')
-    .map((part) => part.trim())
-    .filter((part) => part !== '');
+function inListOrEmpty(raw: string): string[] {
+  const listed = inListValues(raw);
+  return listed.ok ? listed.values : [];
+}
+
+function inListValues(raw: string): { ok: true; values: string[] } | { ok: false; error: string } {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    return { ok: false, error: BRACE_LIST_MESSAGE };
+  }
+  return {
+    ok: true,
+    values: trimmed
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part !== ''),
+  };
 }

@@ -107,6 +107,10 @@ describe('compileFilterText', () => {
       op: 'in',
       value: ['a', 'b'],
     });
+    expect(compileFilterText('@device.id in {dev_a,dev_b}')).toMatchObject({
+      ok: false,
+      error: { message: 'A brace-wrapped list is not an in list. Use ${name:csv} for a multi-value variable.' },
+    });
   });
 
   it('rejects visual search, a single equals, and a topic value comparison', () => {

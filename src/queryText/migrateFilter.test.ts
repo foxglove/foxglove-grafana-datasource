@@ -1,5 +1,6 @@
 import type { FilterNode } from '../types';
 
+import { compileFilterText } from './compileFilter';
 import { filterNodeToText } from './migrateFilter';
 
 describe('filterNodeToText', () => {
@@ -47,6 +48,19 @@ describe('filterNodeToText', () => {
         value: '20',
       })
     ).toBe('/battery.percentage < 20');
+    const filteredPath = filterNodeToText({
+      kind: 'leaf',
+      predicateType: 'message',
+      op: 'gt',
+      field: '',
+      messagePath: '/diagnostics{name=="motor"}.temperature',
+      value: '1',
+    });
+    expect(filteredPath).toBe('"/diagnostics{name==\\"motor\\"}.temperature" > 1');
+    expect(compileFilterText(filteredPath)).toMatchObject({
+      ok: true,
+      filter: { type: 'message', topic: '/diagnostics' },
+    });
     expect(
       filterNodeToText({
         kind: 'leaf',
