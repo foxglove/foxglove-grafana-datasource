@@ -150,6 +150,18 @@ describe('compileFilterText', () => {
       ok: false,
       error: { message: 'Visual search is not supported in Grafana filters.', index: 30 },
     });
+    expect(compileFilterText('"imu.x" exists')).toMatchObject({
+      ok: true,
+      filter: { type: 'topic-exists', topic: 'imu.x' },
+    });
+    expect(compileFilterText('"/imu.x" exists')).toMatchObject({
+      ok: true,
+      filter: { type: 'topic-exists', topic: '/imu.x' },
+    });
+    expect(compileFilterText('"foo.bar" > 1')).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining('exists') },
+    });
     expect(compileFilterText('"cam==era" exists')).toMatchObject({
       ok: true,
       filter: { type: 'topic-exists', topic: 'cam==era' },

@@ -247,6 +247,11 @@ function foxqlField(field: string): string {
     return field;
   }
   const decoded = decodeQuoted(field);
+  // Quotes around a topic name such as "imu.x" are FoxQL syntax. Quotes added while
+  // rendering a saved path escape =, <, >, !, parentheses, or a space.
+  if (!/[=<>!()\s"]/.test(decoded)) {
+    return field;
+  }
   const quoted = parseAndConvertFoxql(field);
   const plain = parseAndConvertFoxql(decoded);
   if (!plain.ok) {
