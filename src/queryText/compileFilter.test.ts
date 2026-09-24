@@ -112,7 +112,11 @@ describe('compileFilterText', () => {
   it('rejects visual search, a single equals, and a topic value comparison', () => {
     expect(compileFilterText('visual("pedestrian")')).toMatchObject({
       ok: false,
-      error: { message: 'Visual search is not supported in Grafana filters.' },
+      error: { message: 'Visual search is not supported in Grafana filters.', index: 0 },
+    });
+    expect(compileFilterText('@device.name == a and visual("pedestrian")')).toMatchObject({
+      ok: false,
+      error: { message: 'Visual search is not supported in Grafana filters.', index: 22 },
     });
     expect(compileFilterText('@device.name = husky')).toMatchObject({
       ok: false,
@@ -121,6 +125,18 @@ describe('compileFilterText', () => {
     expect(compileFilterText('/camera/image == 1')).toMatchObject({
       ok: false,
       error: { message: expect.stringContaining('exists') },
+    });
+    expect(compileFilterText('/diagnostics{name}.level > 1')).toMatchObject({
+      ok: false,
+      error: { message: 'FoxQL expression is incomplete' },
+    });
+    expect(compileFilterText('/foo. exists')).toMatchObject({
+      ok: false,
+      error: { message: 'FoxQL expression is incomplete' },
+    });
+    expect(compileFilterText('@device.name in a, b')).toMatchObject({
+      ok: false,
+      error: { message: 'Write in lists without spaces, for example a,b' },
     });
   });
 

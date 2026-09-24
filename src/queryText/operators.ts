@@ -31,9 +31,7 @@ export const TEXT_TO_OPERATOR: ReadonlyMap<string, FilterTextOp> = new Map(
 
 export const VALUELESS_OPERATORS: ReadonlySet<FilterTextOp> = new Set<FilterTextOp>(['is-not-null']);
 
-export const LOGIC_WORDS = ['and', 'or'] as const;
-
-export const LOGIC_WORD_SET: ReadonlySet<string> = new Set(LOGIC_WORDS);
+const LOGIC_WORDS = ['and', 'or'] as const;
 
 const WORD_OPERATOR_TEXTS: readonly string[] = Object.values(OPERATOR_TO_TEXT).filter((text) =>
   /^[a-z][a-z-]*$/.test(text)

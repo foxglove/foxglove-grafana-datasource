@@ -157,6 +157,10 @@ function normalizeParseError(source: string, err: unknown): ParseError {
   if (bareText !== undefined) {
     return bareText;
   }
+  const spacedIn = spacedInListError(source);
+  if (spacedIn !== undefined) {
+    return spacedIn;
+  }
   const token = getErrorToken(err);
   if (token === undefined) {
     return { message: 'Invalid query', index: source.length };
@@ -234,6 +238,10 @@ function lastTokenBefore(source: string, offset: number): LexToken | undefined {
 }
 
 function incompleteQueryError(source: string): ParseError {
+  const spacedIn = spacedInListError(source);
+  if (spacedIn !== undefined) {
+    return spacedIn;
+  }
   let tokens: LexToken[];
   try {
     tokens = lex(source);
@@ -261,6 +269,20 @@ function incompleteQueryError(source: string): ParseError {
     }
   }
   return { message: 'Unexpected end of query', index: source.length };
+}
+
+const SPACED_IN_LIST = /(?:^|[\s(])in\s+\S+,\s+\S/i;
+
+function spacedInListError(source: string): ParseError | undefined {
+  const match = SPACED_IN_LIST.exec(source);
+  if (match === null) {
+    return undefined;
+  }
+  const comma = source.indexOf(',', match.index);
+  return {
+    message: 'Write in lists without spaces, for example a,b',
+    index: comma === -1 ? match.index : comma + 1,
+  };
 }
 
 function messageForToken(token: LexToken): string {

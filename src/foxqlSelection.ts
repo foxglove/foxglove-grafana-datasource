@@ -98,9 +98,7 @@ function convertFoxql(parsed: FoxqlExpression): ParsedFoxqlSelection {
 
 // --- Public API ---
 
-type ConvertResult =
-  | { ok: true; parsed: ParsedFoxqlSelection }
-  | { ok: false; error: string };
+type ConvertResult = { ok: true; parsed: ParsedFoxqlSelection } | { ok: false; error: string };
 
 /**
  * Parse a raw FoxQL expression and convert it to the API wire format
@@ -119,6 +117,12 @@ export function parseAndConvertFoxql(raw: string): ConvertResult {
 
   if (parsed.functionChain && parsed.functionChain.length > 0) {
     return { ok: false, error: 'Function chains (e.g. .@rpy, .@degrees) are not supported' };
+  }
+
+  // The grammar accepts a trailing dot and a filter with no operator so editors can
+  // offer completions. Sending that parse drops the unfinished part.
+  if (!parsed.isFullySpecified) {
+    return { ok: false, error: 'FoxQL expression is incomplete' };
   }
 
   return { ok: true, parsed: convertFoxql(parsed) };

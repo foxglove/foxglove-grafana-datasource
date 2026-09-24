@@ -32,7 +32,7 @@ export function compileFilterText(source: string): CompileFilterResult {
   if (parsed.query === undefined) {
     return { ok: true };
   }
-  return compileNode(parsed.query);
+  return compileNode(parsed.query, source);
 }
 
 /**
@@ -47,16 +47,16 @@ export function filterTextError(source: string): FilterTextError | undefined {
   return compiled.ok ? undefined : compiled.error;
 }
 
-function compileNode(node: QueryNode): CompileFilterResult {
+function compileNode(node: QueryNode, source: string): CompileFilterResult {
   if (node.type === 'semantic') {
-    return { ok: false, error: { message: VISUAL_MESSAGE, index: 0 } };
+    return { ok: false, error: { message: VISUAL_MESSAGE, index: indexOfVisual(source) } };
   }
   if (isLogicNode(node)) {
-    const left = compileNode(node.left);
+    const left = compileNode(node.left, source);
     if (!left.ok) {
       return left;
     }
-    const right = compileNode(node.right);
+    const right = compileNode(node.right, source);
     if (!right.ok) {
       return right;
     }
@@ -132,6 +132,11 @@ function compileMessage(field: string, operator: FilterTextOp, value: string | u
       value: operator === 'in' ? splitInValues(value ?? '') : value,
     },
   };
+}
+
+function indexOfVisual(source: string): number {
+  const match = /visual\s*\(/i.exec(source);
+  return match?.index ?? 0;
 }
 
 function splitInValues(raw: string): string[] {

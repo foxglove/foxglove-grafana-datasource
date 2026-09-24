@@ -356,11 +356,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
   tokenParenMatch: css({
     color: theme.colors.primary.text,
-    fontWeight: theme.typography.fontWeightBold,
+    textShadow: '0.4px 0 currentColor, -0.4px 0 currentColor',
   }),
   tokenParenUnmatched: css({
     color: theme.colors.error.text,
-    fontWeight: theme.typography.fontWeightBold,
+    textShadow: '0.4px 0 currentColor, -0.4px 0 currentColor',
   }),
   band: css({
     padding: '1px 0',
