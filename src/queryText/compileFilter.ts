@@ -5,7 +5,7 @@ import { isLogicNode, type QueryNode } from './ast';
 import { entityFieldToWire, isEntityFieldText, parseFieldKey } from './entityFields';
 import { lex } from './lexer';
 import { VALUELESS_OPERATORS, type FilterTextOp } from './operators';
-import { parseQuery } from './parser';
+import { errorTokenRange, parseQuery } from './parser';
 
 export type FilterTextError = {
   message: string;
@@ -46,6 +46,16 @@ export function filterTextError(source: string): FilterTextError | undefined {
   }
   const compiled = compileFilterText(source);
   return compiled.ok ? undefined : compiled.error;
+}
+
+/**
+ * While the field is focused, an error on the token at the end of the text is still
+ * being typed. A trailing space does not count. The error shows once more text follows
+ * that token, or when the field blurs.
+ */
+export function isUncommittedFilterError(source: string, error: FilterTextError): boolean {
+  const range = errorTokenRange(source, error.index);
+  return range.end >= source.trimEnd().length;
 }
 
 function compileNode(node: QueryNode, source: string): CompileFilterResult {

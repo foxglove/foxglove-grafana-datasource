@@ -1,4 +1,4 @@
-import { compileFilterText, filterTextError } from './compileFilter';
+import { compileFilterText, filterTextError, isUncommittedFilterError } from './compileFilter';
 
 function compiled(source: string) {
   const result = compileFilterText(source);
@@ -150,6 +150,15 @@ describe('compileFilterText', () => {
       ok: false,
       error: { message: 'Write in lists without spaces, for example a,b' },
     });
+  });
+
+  it('hides an error on the token still being typed', () => {
+    const incomplete = filterTextError('@device.name');
+    const spaced = filterTextError('@device.name ');
+    const continued = filterTextError('@device.name = husky');
+    expect(incomplete && isUncommittedFilterError('@device.name', incomplete)).toBe(true);
+    expect(spaced && isUncommittedFilterError('@device.name ', spaced)).toBe(true);
+    expect(continued && isUncommittedFilterError('@device.name = husky', continued)).toBe(false);
   });
 
   it('skips live validation when the text contains a template variable', () => {

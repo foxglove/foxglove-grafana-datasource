@@ -66,11 +66,12 @@ const MODE_ROWS: Array<Omit<Insert, 'insertText'>> = [
 interface FilterTextEditorProps {
   value: string;
   onChange: (value: string) => void;
+  onFocus: () => void;
   onBlur: () => void;
   error?: ParseError;
 }
 
-export function FilterTextEditor({ value, onChange, onBlur, error }: FilterTextEditorProps) {
+export function FilterTextEditor({ value, onChange, onFocus, onBlur, error }: FilterTextEditorProps) {
   const styles = useStyles2(getStyles);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bandRef = useRef<HTMLDivElement>(null);
@@ -225,7 +226,10 @@ export function FilterTextEditor({ value, onChange, onBlur, error }: FilterTextE
               setFocused(false);
               onBlur();
             }}
-            onFocus={() => setFocused(true)}
+            onFocus={() => {
+              setFocused(true);
+              onFocus();
+            }}
             onScroll={syncScroll}
             onSelect={syncCaret}
             onKeyUp={syncCaret}

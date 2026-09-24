@@ -1,10 +1,10 @@
-import React, { ChangeEvent, useMemo } from 'react';
+import React, { ChangeEvent, useMemo, useState } from 'react';
 import { Combobox, type ComboboxOption, InlineField, InlineFieldRow, Input, Stack } from '@grafana/ui';
 import { QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
 import { intervalStringToNanoseconds } from '../intervalNanos';
 import { parseAndConvertFoxql } from '../foxqlSelection';
-import { filterTextError } from '../queryText/compileFilter';
+import { filterTextError, isUncommittedFilterError } from '../queryText/compileFilter';
 import { filterNodeToText } from '../queryText/migrateFilter';
 import { MyDataSourceOptions, MyQuery, Selection, GroupBy, AggregationType } from '../types';
 import { FilterTextEditor } from './FilterTextEditor';
@@ -134,6 +134,11 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
   const filterText = query.filterText ?? filterNodeToText(query.filter);
   const filterError = useMemo(() => filterTextError(filterText), [filterText]);
+  const [filterFocused, setFilterFocused] = useState(false);
+  const visibleFilterError =
+    filterError === undefined || (filterFocused && isUncommittedFilterError(filterText, filterError))
+      ? undefined
+      : filterError;
 
   const onFilterTextChange = (value: string) => {
     onChange({ ...query, filterText: value, filter: undefined });
@@ -255,10 +260,19 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
         labelWidth={14}
         grow
         tooltip="Filter text, same language as Foxglove Search. Leave empty to apply no filter."
-        invalid={!!filterError}
-        error={filterError?.message}
+        invalid={!!visibleFilterError}
+        error={visibleFilterError?.message}
       >
-        <FilterTextEditor value={filterText} onChange={onFilterTextChange} onBlur={runOnBlur} error={filterError} />
+        <FilterTextEditor
+          value={filterText}
+          onChange={onFilterTextChange}
+          onFocus={() => setFilterFocused(true)}
+          onBlur={() => {
+            setFilterFocused(false);
+            runOnBlur();
+          }}
+          error={visibleFilterError}
+        />
       </InlineField>
     </Stack>
   );
