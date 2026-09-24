@@ -44,6 +44,35 @@ func TestQueryDataFilterError(t *testing.T) {
 	}
 }
 
+func TestQueryDataSelectionError(t *testing.T) {
+	ds := Datasource{}
+	raw, err := json.Marshal(map[string]any{
+		"selectionError": "Enter a FoxQL expression (/topic.x.y) or a device property (@device.properties.key)",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := ds.QueryData(
+		context.Background(),
+		&backend.QueryDataRequest{
+			Queries: []backend.DataQuery{
+				{RefID: "A", JSON: raw},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := resp.Responses["A"]
+	if r.Error == nil {
+		t.Fatal("expected error for invalid selection text")
+	}
+	if !strings.Contains(r.Error.Error(), "FoxQL expression") {
+		t.Fatalf("error = %v", r.Error)
+	}
+}
+
 func TestQueryDataMissingSelection(t *testing.T) {
 	ds := Datasource{}
 

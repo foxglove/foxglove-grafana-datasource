@@ -79,6 +79,7 @@ func getAPIBaseURL(config *models.PluginSettings) string {
 // JSON forwarded to the Foxglove API; granularityWire is translated to filterBinNanos in the POST body.
 type queryModel struct {
 	Selection       json.RawMessage `json:"selection"`
+	SelectionError  string          `json:"selectionError,omitempty"`
 	FilterWire      json.RawMessage `json:"filterWire"`
 	FilterError     string          `json:"filterError,omitempty"`
 	GroupBy         json.RawMessage `json:"groupBy"`
@@ -123,6 +124,9 @@ func (d *Datasource) query(ctx context.Context, pCtx backend.PluginContext, quer
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err))
 	}
 
+	if qm.SelectionError != "" {
+		return backend.ErrDataResponse(backend.StatusBadRequest, qm.SelectionError)
+	}
 	if len(qm.Selection) == 0 || string(qm.Selection) == "null" {
 		return backend.ErrDataResponse(backend.StatusBadRequest, "selection is required")
 	}

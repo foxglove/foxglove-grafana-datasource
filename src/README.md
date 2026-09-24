@@ -21,13 +21,13 @@ Look up your Project ID and Site ID on the [Projects](https://app.foxglove.dev/~
 
 In Grafana, go to **Connections → Data sources → Add new data source** and choose Foxglove.
 
-| Field | Required | Value |
-| ----- | -------- | ----- |
-| API Base URL | No | Defaults to `https://api.foxglove.dev`. Most users should not change this field. |
-| API Key | Yes | Your API key |
-| Project ID | Yes | The `proj_` ID from the Projects settings page |
-| Site ID | Yes | The `site_` ID of your Primary Site from the Sites settings page |
-| Query Timeout (seconds) | No | Per-request limit for each query. Leave empty or set to `0` to use Grafana's HTTP client timeout |
+| Field                   | Required | Value                                                                                            |
+| ----------------------- | -------- | ------------------------------------------------------------------------------------------------ |
+| API Base URL            | No       | Defaults to `https://api.foxglove.dev`. Most users should not change this field.                 |
+| API Key                 | Yes      | Your API key                                                                                     |
+| Project ID              | Yes      | The `proj_` ID from the Projects settings page                                                   |
+| Site ID                 | Yes      | The `site_` ID of your Primary Site from the Sites settings page                                 |
+| Query Timeout (seconds) | No       | Per-request limit for each query. Leave empty or set to `0` to use Grafana's HTTP client timeout |
 
 Click **Save & test**. A working configuration reports "Successfully connected to Foxglove API".
 
@@ -35,11 +35,11 @@ Each data source targets one Project and one Primary Site. To chart data from mo
 
 ## Queries
 
-In a Time series panel, select the Foxglove data source. Leave **Selection** set to **FoxQL Expression** and enter a numeric path — for example `/imu.linear_acceleration.x`. Set the dashboard time range to a window where at least one device was recording.
+In a Time series panel, select the Foxglove data source. Enter a numeric path in **Selection** — for example `/imu.linear_acceleration.x`, or a device property such as `@device.properties.version`. Set the dashboard time range to a window where at least one device was recording.
 
 The query editor supports:
 
-- **Selection**: a FoxQL expression or a numeric device property
+- **Selection**: a FoxQL expression (`/topic.x.y`) or a numeric device property (`@device.properties.key`)
 - **Group By**: device or device property (FoxQL selections only)
 - **Aggregation**: last, first, max, min, sum, average, median, and percentiles
 - **Filters**: the same filter text as Foxglove Search, for example `@device.name == husky` or `/battery.percentage < 20`

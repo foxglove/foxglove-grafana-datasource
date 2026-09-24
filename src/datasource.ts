@@ -2,9 +2,9 @@ import { DataSourceInstanceSettings, CoreApp, ScopedVars } from '@grafana/data';
 import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
 
 import { intervalStringToNanoseconds } from './intervalNanos';
-import { parseAndConvertFoxql } from './foxqlSelection';
 import { compileFilterText } from './queryText/compileFilter';
 import { filterNodeToText } from './queryText/migrateFilter';
+import { compileSelectionText, selectionToText } from './queryText/selectionText';
 import { MyQuery, MyDataSourceOptions, DEFAULT_QUERY } from './types';
 
 export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptions> {
@@ -20,22 +20,19 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
     const tpl = getTemplateSrv();
     const result = { ...query };
 
-    if (result.selection) {
-      if (result.selection.type === 'messagePath') {
-        const rawPath = tpl.replace(result.selection.messagePath, scopedVars);
-        const converted = parseAndConvertFoxql(rawPath);
-        result.selection = {
-          ...result.selection,
-          messagePath: rawPath,
-          messagePathString: rawPath,
-          topic: converted.ok ? converted.parsed.topic : undefined,
-          selectorPath: converted.ok ? converted.parsed.selectorPath : undefined,
-        };
-      } else {
-        result.selection = {
-          ...result.selection,
-          key: tpl.replace(result.selection.key, scopedVars),
-        };
+    delete result.selectionError;
+    const selectionSource =
+      typeof result.selectionText === 'string' ? result.selectionText : selectionToText(result.selection);
+    const substitutedSelection = tpl.replace(selectionSource, scopedVars);
+    if (substitutedSelection.trim() === '') {
+      delete result.selection;
+    } else {
+      const compiled = compileSelectionText(substitutedSelection);
+      if (!compiled.ok) {
+        result.selectionError = compiled.error;
+        delete result.selection;
+      } else if (compiled.selection) {
+        result.selection = compiled.selection;
       }
     }
 
@@ -92,15 +89,8 @@ export class DataSource extends DataSourceWithBackend<MyQuery, MyDataSourceOptio
   }
 
   filterQuery(query: MyQuery): boolean {
-    if (!query.selection) {
-      return false;
-    }
-    if (query.selection.type === 'messagePath' && !query.selection.messagePath) {
-      return false;
-    }
-    if (query.selection.type === 'deviceProperty' && !query.selection.key) {
-      return false;
-    }
-    return true;
+    const selectionSource =
+      typeof query.selectionText === 'string' ? query.selectionText : selectionToText(query.selection);
+    return selectionSource.trim() !== '';
   }
 }

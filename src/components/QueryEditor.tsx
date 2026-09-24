@@ -3,18 +3,13 @@ import { Combobox, type ComboboxOption, InlineField, InlineFieldRow, Input, Stac
 import { QueryEditorProps } from '@grafana/data';
 import { DataSource } from '../datasource';
 import { intervalStringToNanoseconds } from '../intervalNanos';
-import { parseAndConvertFoxql } from '../foxqlSelection';
 import type { FilterTextError } from '../queryText/compileFilter';
 import { filterNodeToText } from '../queryText/migrateFilter';
-import { MyDataSourceOptions, MyQuery, Selection, GroupBy, AggregationType } from '../types';
+import { isDevicePropertySelectionText, selectionTextError, selectionToText } from '../queryText/selectionText';
+import { MyDataSourceOptions, MyQuery, GroupBy, AggregationType } from '../types';
 import { FilterTextEditor } from './FilterTextEditor';
 
 type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
-
-const SELECTION_TYPE_OPTIONS: Array<ComboboxOption<Selection['type']>> = [
-  { label: 'FoxQL Expression', value: 'messagePath' },
-  { label: 'Device Property', value: 'deviceProperty' },
-];
 
 const GROUPBY_TYPE_OPTIONS: Array<ComboboxOption<GroupBy['type']>> = [
   { label: 'Device', value: 'deviceId' },
@@ -36,20 +31,10 @@ const AGGREGATION_TYPE_OPTIONS: Array<ComboboxOption<AggregationType | '__none__
 ];
 
 export function QueryEditor({ query, onChange, onRunQuery }: Props) {
-  const selection = query.selection ?? { type: 'messagePath', messagePath: '' };
   const groupBy = query.groupBy ?? { type: 'deviceId' };
-
-  const rawExpression = selection.type === 'messagePath' ? selection.messagePath : '';
-  const expressionError = useMemo(() => {
-    if (!rawExpression) {
-      return undefined;
-    }
-    if (rawExpression.includes('$')) {
-      return undefined;
-    }
-    const result = parseAndConvertFoxql(rawExpression);
-    return result.ok ? undefined : result.error;
-  }, [rawExpression]);
+  const selectionText = query.selectionText ?? selectionToText(query.selection);
+  const selectionError = useMemo(() => selectionTextError(selectionText), [selectionText]);
+  const selectingDeviceProperty = isDevicePropertySelectionText(selectionText);
 
   const rawInterval = query.aggregation?.interval ?? '';
   const intervalError = useMemo(() => validateIntervalString(rawInterval), [rawInterval]);
@@ -57,36 +42,13 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
   const rawGranularity = query.granularity ?? '';
   const granularityError = useMemo(() => validateIntervalString(rawGranularity), [rawGranularity]);
 
-  // --- Selection handlers ---
-
-  const onSelectionTypeChange = (opt: ComboboxOption<Selection['type']>) => {
-    const newSel: Selection =
-      opt.value === 'messagePath' ? { type: 'messagePath', messagePath: '' } : { type: 'deviceProperty', key: '' };
-    const updates: Partial<MyQuery> = { selection: newSel };
-    if (opt.value === 'deviceProperty') {
+  const onSelectionTextChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    const updates: Partial<MyQuery> = { selectionText: value };
+    if (isDevicePropertySelectionText(value)) {
       updates.groupBy = { type: 'deviceId' };
     }
     onChange({ ...query, ...updates });
-  };
-
-  const onExpressionChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (selection.type !== 'messagePath') {
-      return;
-    }
-    onChange({
-      ...query,
-      selection: { ...selection, messagePath: e.target.value },
-    });
-  };
-
-  const onSelectionKeyChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (selection.type !== 'deviceProperty') {
-      return;
-    }
-    onChange({
-      ...query,
-      selection: { ...selection, key: e.target.value },
-    });
   };
 
   // --- GroupBy handlers ---
@@ -147,45 +109,27 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
 
   return (
     <Stack gap={1} direction="column">
-      {/* Selection */}
       <InlineFieldRow>
-        <InlineField label="Selection" labelWidth={14} tooltip="What data to select">
-          <Combobox
-            options={SELECTION_TYPE_OPTIONS}
-            value={selection.type}
-            onChange={onSelectionTypeChange}
-            width={20}
+        <InlineField
+          label="Selection"
+          labelWidth={14}
+          tooltip="A FoxQL expression (/topic.x.y) or a device property (@device.properties.key)"
+          grow
+          invalid={!!selectionError}
+          error={selectionError}
+        >
+          <Input
+            value={selectionText}
+            onChange={onSelectionTextChange}
+            onBlur={runOnBlur}
+            placeholder="/topic.x.y or @device.properties.key"
+            invalid={!!selectionError}
           />
         </InlineField>
-
-        {selection.type === 'messagePath' && (
-          <InlineField
-            label="Expression"
-            labelWidth={14}
-            tooltip="FoxQL expression, e.g. /imu.linear_acceleration.x"
-            grow
-            invalid={!!expressionError}
-            error={expressionError}
-          >
-            <Input
-              value={selection.messagePath}
-              onChange={onExpressionChange}
-              onBlur={runOnBlur}
-              placeholder="/topic.field.subfield"
-              invalid={!!expressionError}
-            />
-          </InlineField>
-        )}
-
-        {selection.type === 'deviceProperty' && (
-          <InlineField label="Property Key" labelWidth={14} grow>
-            <Input value={selection.key} onChange={onSelectionKeyChange} onBlur={runOnBlur} placeholder="propertyKey" />
-          </InlineField>
-        )}
       </InlineFieldRow>
 
-      {/* Group By — hidden when selecting device properties (always groups by device) */}
-      {selection.type === 'messagePath' && (
+      {/* Group By — hidden for a device property, which always groups by device */}
+      {!selectingDeviceProperty && (
         <InlineFieldRow>
           <InlineField label="Group By" labelWidth={14} tooltip="How to group the results">
             <Combobox options={GROUPBY_TYPE_OPTIONS} value={groupBy.type} onChange={onGroupByTypeChange} width={20} />

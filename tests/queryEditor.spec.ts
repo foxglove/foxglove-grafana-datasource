@@ -10,9 +10,7 @@ test('renders the default query editor sections', async ({ panelEditPage, readPr
 
   const row = panelEditPage.getQueryEditorRow('A');
   await expect(row.getByText('Selection')).toBeVisible();
-  // Selection defaults to FoxQL Expression; the input field is labeled
-  // "Expression". The Combobox selected value may not appear as getByText.
-  await expect(row.getByText('Expression', { exact: true })).toBeVisible();
+  await expect(row.getByPlaceholder('/topic.x.y or @device.properties.key')).toBeVisible();
   await expect(row.getByText('Group By')).toBeVisible();
   await expect(row.getByText('Aggregation')).toBeVisible();
   await expect(row.getByText('Granularity')).toBeVisible();
@@ -24,7 +22,7 @@ test('FoxQL expression input accepts text', async ({ panelEditPage, readProvisio
   await panelEditPage.datasource.set(ds.name);
   const row = panelEditPage.getQueryEditorRow('A');
 
-  const expression = row.getByPlaceholder('/topic.field.subfield').first();
+  const expression = row.getByPlaceholder('/topic.x.y or @device.properties.key');
   await expression.fill('/imu.linear_acceleration.x');
   await expect(expression).toHaveValue('/imu.linear_acceleration.x');
 });

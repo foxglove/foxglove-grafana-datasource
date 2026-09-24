@@ -144,6 +144,14 @@ export type FilterWire =
 export interface MyQuery extends DataQuery {
   selection?: Selection;
   /**
+   * Selection text. When set, including as an empty string, it is the selection
+   * the editor and the query use. Older dashboards store {@link selection} from
+   * the type dropdown and gain `selectionText` when the panel is edited.
+   */
+  selectionText?: string;
+  /** Set by applyTemplateVariables() when selection text does not compile. Not persisted. */
+  selectionError?: string;
+  /**
    * Filter text in the Search filter language. When set, including as an empty
    * string, it is the filter the editor and the query use. Older dashboards
    * store {@link filter} instead and gain `filterText` when the panel is edited.
