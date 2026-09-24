@@ -3,6 +3,7 @@ import type { FilterWire } from '../types';
 
 import { isLogicNode, type QueryNode } from './ast';
 import { entityFieldToWire, isEntityFieldText, parseFieldKey } from './entityFields';
+import { lex } from './lexer';
 import { VALUELESS_OPERATORS, type FilterTextOp } from './operators';
 import { parseQuery } from './parser';
 
@@ -135,8 +136,25 @@ function compileMessage(field: string, operator: FilterTextOp, value: string | u
 }
 
 function indexOfVisual(source: string): number {
-  const match = /visual\s*\(/i.exec(source);
-  return match?.index ?? 0;
+  let tokens;
+  try {
+    tokens = lex(source);
+  } catch {
+    return 0;
+  }
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    const next = tokens[index + 1];
+    if (
+      token.type === 'word' &&
+      token.value.toLowerCase() === 'visual' &&
+      next?.type === 'lparen' &&
+      next.offset === token.offset + token.text.length
+    ) {
+      return token.offset;
+    }
+  }
+  return 0;
 }
 
 function splitInValues(raw: string): string[] {

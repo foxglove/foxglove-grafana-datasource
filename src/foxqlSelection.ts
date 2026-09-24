@@ -125,5 +125,25 @@ export function parseAndConvertFoxql(raw: string): ConvertResult {
     return { ok: false, error: 'FoxQL expression is incomplete' };
   }
 
+  if (containsVariableReference(parsed)) {
+    return { ok: false, error: 'FoxQL variable references are not supported' };
+  }
+
   return { ok: true, parsed: convertFoxql(parsed) };
+}
+
+function containsVariableReference(parsed: FoxqlExpression): boolean {
+  for (const part of parsed.parts) {
+    if (part.type === 'slice' && (isVariable(part.start) || isVariable(part.end))) {
+      return true;
+    }
+    if (part.type === 'filter' && isVariable(part.value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isVariable(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && 'variableName' in value;
 }

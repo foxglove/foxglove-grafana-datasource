@@ -271,18 +271,29 @@ function incompleteQueryError(source: string): ParseError {
   return { message: 'Unexpected end of query', index: source.length };
 }
 
-const SPACED_IN_LIST = /(?:^|[\s(])in\s+\S+,\s+\S/i;
-
 function spacedInListError(source: string): ParseError | undefined {
-  const match = SPACED_IN_LIST.exec(source);
-  if (match === null) {
+  let tokens: LexToken[];
+  try {
+    tokens = lex(source);
+  } catch {
     return undefined;
   }
-  const comma = source.indexOf(',', match.index);
-  return {
-    message: 'Write in lists without spaces, for example a,b',
-    index: comma === -1 ? match.index : comma + 1,
-  };
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    const value = tokens[index + 1];
+    const extra = tokens[index + 2];
+    if (
+      token.type === 'word' &&
+      token.value.toLowerCase() === 'in' &&
+      value?.type === 'word' &&
+      extra !== undefined &&
+      (extra.type === 'word' || extra.type === 'qstring') &&
+      value.text.includes(',')
+    ) {
+      return { message: 'Write in lists without spaces, for example a,b', index: extra.offset };
+    }
+  }
+  return undefined;
 }
 
 function messageForToken(token: LexToken): string {

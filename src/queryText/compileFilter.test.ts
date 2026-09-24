@@ -134,6 +134,18 @@ describe('compileFilterText', () => {
       ok: false,
       error: { message: 'FoxQL expression is incomplete' },
     });
+    expect(compileFilterText('/topic.foo[$a].x > 1')).toMatchObject({
+      ok: false,
+      error: { message: 'FoxQL variable references are not supported' },
+    });
+    expect(compileFilterText('@device.name == "logs in a, b"')).toMatchObject({
+      ok: true,
+      filter: { type: 'device', op: 'eq', value: 'logs in a, b' },
+    });
+    expect(compileFilterText('@device.name == "visual(" and visual("pedestrian")')).toMatchObject({
+      ok: false,
+      error: { message: 'Visual search is not supported in Grafana filters.', index: 30 },
+    });
     expect(compileFilterText('@device.name in a, b')).toMatchObject({
       ok: false,
       error: { message: 'Write in lists without spaces, for example a,b' },
