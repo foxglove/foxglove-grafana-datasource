@@ -66,14 +66,22 @@ export interface GranularityWire {
 // ---------------------------------------------------------------------------
 // Filter types
 //
-// The UI works with FilterNode — a tree using flat arrays for groups.
-// serializeFilterNode converts to FilterWireSerialized (binary left/right
-// tree, message predicates carry raw messagePath strings).
-// replaceFilterVars() in datasource.ts resolves template variables and
-// parses FoxQL expressions, producing the final FilterWire sent to the API.
+// The editor stores filter text. Older dashboards store a FilterNode tree;
+// filterNodeToText renders that tree so both paths compile to FilterWire.
 // ---------------------------------------------------------------------------
 
-export type FilterOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'in';
+export type FilterOp =
+  | 'eq'
+  | 'neq'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
+  | 'like'
+  | 'in'
+  | 'contains'
+  | 'not-contains'
+  | 'is-not-null';
 
 export type LeafPredicateType = 'device' | 'message' | 'event' | 'recording';
 
@@ -96,117 +104,65 @@ export interface FilterGroup {
 
 export type FilterNode = FilterLeaf | FilterGroup;
 
-// ---------------------------------------------------------------------------
-// Wire format types
-//
-// Two phases: "serialized" (output of serializeFilterNode, message predicates
-// still carry the raw messagePath string) and "resolved" (after template
-// variable substitution + FoxQL parsing — what the API receives).
-// ---------------------------------------------------------------------------
+type FieldPredicateType = 'device' | 'event' | 'recording' | 'episode' | 'session';
 
-type FieldPredicateType = 'device' | 'event' | 'recording';
-
-/** Wire predicate for device / event / recording. */
+/** Wire predicate for device, event, recording, episode, and session fields. */
 export interface FilterWireFieldPredicate {
   type: FieldPredicateType;
   op: FilterOp;
   field: string;
-  value: string | string[];
+  /** Omitted for `is-not-null`. `in` is a string array; every other operator is a string. */
+  value?: string | string[];
 }
 
-/** Serialized message predicate — still has the raw messagePath string. */
-export interface FilterWireMessageRaw {
-  type: 'message';
-  op: FilterOp;
-  messagePath: string;
-  value: string | string[];
-}
-
-/** Resolved message predicate — FoxQL expression parsed into topic + selectorPath. */
+/** Message predicate — FoxQL expression parsed into topic + selectorPath. */
 export interface FilterWireMessageResolved {
   type: 'message';
   op: FilterOp;
   topic: string;
   selectorPath: Selector[];
-  value: string | string[];
+  /** Omitted for `is-not-null`. `in` is a string array; every other operator is a string. */
+  value?: string | string[];
 }
 
-/** Serialized wire format — output of serializeFilterNode. */
-export type FilterWireSerialized =
-  | FilterWireFieldPredicate
-  | FilterWireMessageRaw
-  | { type: 'and'; left: FilterWireSerialized; right: FilterWireSerialized }
-  | { type: 'or'; left: FilterWireSerialized; right: FilterWireSerialized };
+/** Topic existence predicate. The filter text is `/topic exists`. */
+export interface FilterWireTopicExists {
+  type: 'topic-exists';
+  topic: string;
+}
 
-/** Resolved wire format — sent to the backend / Foxglove API. */
+/** Wire format sent to the backend / Foxglove API. */
 export type FilterWire =
   | FilterWireFieldPredicate
   | FilterWireMessageResolved
+  | FilterWireTopicExists
   | { type: 'and'; left: FilterWire; right: FilterWire }
   | { type: 'or'; left: FilterWire; right: FilterWire };
-
-// --- Factories ---
-
-export function newFilterLeaf(): FilterLeaf {
-  return { kind: 'leaf', predicateType: 'device', op: 'eq', field: 'name', messagePath: '', value: '' };
-}
-
-export function newFilterGroup(): FilterGroup {
-  return { kind: 'group', operator: 'and', children: [newFilterLeaf()] };
-}
-
-// --- Serialization (UI → serialized wire) ---
-
-export function serializeFilterNode(node: FilterNode): FilterWireSerialized {
-  if (node.kind === 'leaf') {
-    if (node.predicateType === 'message') {
-      return {
-        type: 'message',
-        op: node.op,
-        messagePath: node.messagePath,
-        value: node.value,
-      };
-    }
-    return {
-      type: node.predicateType,
-      op: node.op,
-      field: node.field,
-      value: node.value,
-    };
-  }
-
-  const { operator, children } = node;
-  if (children.length === 0) {
-    return serializeFilterNode(newFilterLeaf());
-  }
-  if (children.length === 1) {
-    return serializeFilterNode(children[0]);
-  }
-
-  let acc = serializeFilterNode(children[0]);
-  for (let i = 1; i < children.length; i++) {
-    acc = { type: operator, left: acc, right: serializeFilterNode(children[i]) };
-  }
-  return acc;
-}
-
-/** Ensure the top-level node is always a group (for the editor UI). */
-export function ensureGroup(node: FilterNode): FilterGroup {
-  if (node.kind === 'group') {
-    return node;
-  }
-  return { kind: 'group', operator: 'and', children: [node] };
-}
 
 // --- Query model ---
 
 export interface MyQuery extends DataQuery {
   selection?: Selection;
-  /** Stored as the UI-friendly FilterNode tree. Serialized to the binary-tree
-   *  wire format in applyTemplateVariables() before being sent to the backend. */
+  /**
+   * Selection text. When set, including as an empty string, it is the selection
+   * the editor and the query use. Older dashboards store {@link selection} from
+   * the type dropdown and gain `selectionText` when the panel is edited.
+   */
+  selectionText?: string;
+  /** Set by applyTemplateVariables() when selection text does not compile. Not persisted. */
+  selectionError?: string;
+  /**
+   * Filter text in the Search filter language. When set, including as an empty
+   * string, it is the filter the editor and the query use. Older dashboards
+   * store {@link filter} instead and gain `filterText` when the panel is edited.
+   */
+  filterText?: string;
+  /** Condition tree written by the previous filter editor. Read until the panel is edited. */
   filter?: FilterNode;
   /** Wire-format filter, populated by applyTemplateVariables(). Not persisted. */
   filterWire?: FilterWire;
+  /** Set by applyTemplateVariables() when filter text does not compile. Not persisted. */
+  filterError?: string;
   groupBy?: GroupBy;
   /** UI-friendly aggregation with human-readable interval string. */
   aggregation?: Aggregation;
@@ -223,7 +179,7 @@ export interface MyQuery extends DataQuery {
 
 export const DEFAULT_QUERY: Partial<MyQuery> = {
   selection: { type: 'messagePath', messagePath: '' },
-  filter: newFilterLeaf(),
+  filterText: '',
   groupBy: { type: 'deviceId' },
 };
 

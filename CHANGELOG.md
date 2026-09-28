@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v0.1.0
+
+### Changed
+
+- The 'selection' form field is now a text field that accepts a FoxQL expression or a `@device.properties.key` specifier.
+- The filter editor accepts the same filter text as Foxglove Search (`@device.name == husky`, `/battery.percentage < 20`, `and` / `or`), including `contains`, `exists`, episode, and session filters. Typing suggests the static field names and their operators.
+
 ## v0.0.10
 
 ### Changed
