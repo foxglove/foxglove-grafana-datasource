@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.0
+
 ### Changed
 
 - A brace-wrapped `in` list, including Grafana's default multi-value format `{a,b}`, fails the query. Use `${name:csv}`. A saved message path that contains `=` or quotes is compiled as that path.
