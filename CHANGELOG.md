@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Config page shows Grafana's Secure Socks Proxy toggle when the instance has the secure socks proxy enabled, so Grafana Cloud users can turn on Private Data Source Connect (PDC) for the data source. With PDC on, both the Foxglove API request and the site download go through the PDC agent.
+
 ## v0.1.0
 
 ### Changed

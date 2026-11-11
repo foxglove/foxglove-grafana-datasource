@@ -192,6 +192,8 @@ export interface MyDataSourceOptions extends DataSourceJsonData {
   queryHttpTimeoutSeconds?: number;
   projectId?: string;
   siteId?: string;
+  /** Route this data source's backend HTTP traffic through Grafana's secure socks proxy (Grafana Cloud PDC). */
+  enableSecureSocksProxy?: boolean;
 }
 
 /**
