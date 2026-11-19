@@ -301,7 +301,10 @@ func (d *Datasource) fetchGrafanaQuery(
 	// Do not log the signed URL; it grants time-limited access to query results.
 	log.DefaultLogger.Debug("Received Grafana query download link")
 
-	// Fetch the Grafana Frame JSON from the signed link.
+	// Fetch the Grafana Frame JSON from the signed link. The link points at the
+	// primary site, which may only be reachable through Grafana's secure socks
+	// proxy (PDC). Use d.httpClient, which carries the proxy settings, not a
+	// fresh client.
 	dlReq, err := http.NewRequestWithContext(ctx, "GET", qResp.Link, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create download request: %w", err)

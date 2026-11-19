@@ -1,6 +1,7 @@
 import React, { ChangeEvent } from 'react';
-import { InlineField, Input, SecretInput } from '@grafana/ui';
+import { InlineField, Input, SecretInput, SecureSocksProxySettings } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps } from '@grafana/data';
+import { config } from '@grafana/runtime';
 import { MyDataSourceOptions, MySecureJsonData } from '../types';
 
 interface Props extends DataSourcePluginOptionsEditorProps<MyDataSourceOptions, MySecureJsonData> {}
@@ -134,6 +135,9 @@ export function ConfigEditor(props: Props) {
           width={40}
         />
       </InlineField>
+      {config.secureSocksDSProxyEnabled && (
+        <SecureSocksProxySettings options={options} onOptionsChange={onOptionsChange} />
+      )}
     </>
   );
 }
