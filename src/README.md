@@ -33,6 +33,14 @@ Click **Save & test**. A working configuration reports "Successfully connected t
 
 Each data source targets one Project and one Primary Site. To chart data from more than one Primary Site, add a data source per site.
 
+## Primary Sites in a private network
+
+If your Primary Site is only reachable from inside your network, Grafana Cloud can reach it through [Private Data Source Connect (PDC)](https://grafana.com/docs/grafana-cloud/connect-externally-hosted/private-data-source-connect/). Set up a PDC agent in your network, then turn on PDC in the data source settings and choose your PDC network. Leave **API Base URL** at its default.
+
+When PDC is on, the plugin sends all of its requests through the PDC agent, so the agent must be able to reach both `https://api.foxglove.dev` and your Primary Site's URL.
+
+**Save & test** only checks the connection to the Foxglove API. Run a query to check that Grafana can reach your Primary Site.
+
 ## Queries
 
 In a Time series panel, select the Foxglove data source. Enter a numeric path in **Selection** — for example `/imu.linear_acceleration.x`, or a device property such as `@device.properties.version`. Set the dashboard time range to a window where at least one device was recording.
