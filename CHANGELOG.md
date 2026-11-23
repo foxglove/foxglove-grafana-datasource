@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.1.1
+
+### Fixed
+
+- Build the backend with Go 1.26.11 and update `golang.org/x/net` (v0.60.0) and `github.com/klauspost/compress` (v1.20.2) to fix vulnerabilities reported by govulncheck.
+
 ## v0.1.0
 
 ### Added
