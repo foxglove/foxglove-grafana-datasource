@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.1.2
+
+### Fixed
+
+- Update `golang.org/x/net` to v0.62.0 to fix GO-2026-6860 and GO-2026-6866.
+
+### Changed
+
+- Update the Grafana plugin Go SDK to v0.302.0.
+
 ## v0.1.1
 
 ### Fixed
